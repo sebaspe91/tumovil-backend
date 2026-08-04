@@ -1,0 +1,30 @@
+{
+  "name": "tumovil-backend",
+  "version": "1.0.0",
+  "description": "backend de la app tuMovil",
+  "homepage": "https://github.com/sebaspe91/tumovil-backend#readme",
+  "bugs": {
+    "url": "https://github.com/sebaspe91/tumovil-backend/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sebaspe91/tumovil-backend.git"
+  },
+  "license": "ISC",
+  "author": "Juan Sebastian Perez Guzman",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "express": "^5.2.1",
+    "mysql2": "^3.23.2",
+    "sequelize": "^6.37.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
