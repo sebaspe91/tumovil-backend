@@ -1,5 +1,6 @@
 // Importaciones
 import express from "express";
+import dotenv from 'dotenv';
 import usuarioRoutes from "./routes/usuarioRoutes.js";
 import db from "./config/db.js";
 
@@ -8,6 +9,9 @@ const app = express();
 
 // Habilitar JSON para express
 app.use(express.json());
+
+// para utilizar .env
+dotenv.config();
 
 // conexion de la DB
 db.authenticate()
