@@ -27,6 +27,10 @@ const Usuario = db.define('usuarios', {
     telefono_user: {
         type: Siquelize.STRING
     },
+    tipo_user: {
+        type: Siquelize.STRING,
+        defaultValue: "VENDEDOR"
+    },
     token: {
         type: Siquelize.STRING,
         defaultValue: generarId

@@ -1,5 +1,8 @@
 import Usuario from "../models/Usuario.js";
 import generarJWT from "../helpers/generarJWT.js";
+import generarId from "../helpers/generarId.js";
+import { where } from "sequelize";
+import e from "express";
 
 
 
@@ -24,6 +27,7 @@ const registrarUsuario = async (req, res) => {
             return res.status(400).json({msg: error.message});
         }
 
+        // guardando los datos en la DB
         const usuario = await Usuario.create({
             nombre_user,
             apellido_user,
@@ -33,14 +37,11 @@ const registrarUsuario = async (req, res) => {
             telefono_user
         });
 
+        // Enviar EMAIL
+
+        // respuesta json
         res.json({
-            msg: 'Usuario creado correctamente',
-            usuario: {
-                id_usuario: usuario.id_usuario,
-                nombre_user: usuario.nombre_user,
-                apellido_user: usuario.apellido_user,
-                correo_user: usuario.correo_user
-            }
+            msg: 'Registrando Usuario...'
         });            
       
     } catch (error) {
@@ -104,6 +105,7 @@ const autenticar = async (req, res) => {
             id_usuario: usuarioExiste.id_usuario,
             nombre_user: usuarioExiste.nombre_user,
             correo_user: usuarioExiste.correo_user,
+            tipo_user: usuarioExiste.tipo_user,
             token: generarJWT(usuarioExiste.id_usuario) // generamos el token
         }); // crea el wet token
     } else {
@@ -112,11 +114,195 @@ const autenticar = async (req, res) => {
     }
 }
 
+// Perfil inicio de sesion activa
+const perfilUsuario = (req, res) => {
+    // Agrega los datos de Auth en perfil
+    const {usuario} = req;
+
+    res.json({
+        perfil:usuario
+    });
+}
+
+
+// Para recuperar password
+
+const olvidePassword = async (req, res) => {
+    const {correo_user} = req.body;
+
+    const usuarioExiste = await Usuario.findOne({where:{correo_user}});
+
+    if (!usuarioExiste) {
+        const error = new Error('El usuario no existe');
+        return res.status(404).json({msg: error.message});
+    }
+
+    // comprobar si el usuario esta confirmado
+    if (!usuarioExiste.confirmar) {
+        const error = new Error('Tu Cuenta no ha sido confirmada');
+        return res.status(403).json({msg: error.message});
+    }
+
+    try {
+        // generar el token
+        await usuarioExiste.update({
+            token: generarId()
+        });
+
+        // seccion de enviar EMAIL
+
+        // respuesta json
+        res.json({
+            msg: "Hemos enviado un email con las instrucciones"
+        });
+
+    } catch (error) {
+        console.log(error);
+    }
+
+} 
+
+// comprobar token de recuperar password
+const comprobarToken = async (req, res) => {
+    const {token} = req.params;
+    
+    // buscar user que tenga el token
+    const usuarioExiste = await Usuario.findOne({where: {token}});
+
+    if (!usuarioExiste) {
+        const error = new Error('Token No Valido');
+        return res.status(404).json({msg: error.message});
+    }
+
+    res.json({
+        msg: "Token Valido y el usuario existe"
+    });
+
+}
+
+// Nuevo password
+const nuevoPassword = async (req, res) => {
+    const {token} = req.params;
+    const {password} = req.body;
+
+    // Buscar el usuario que tenga el token
+    const usuario = await Usuario.findOne({where: {token}});
+
+    if (!usuario) {
+        const error = new Error('Token no válido');
+        return res.status(404).json({msg: error.message});  
+    }
+
+    // validar password
+    if (password.trim() === '') {
+        const error = new Error('Contraseña no válida');
+        return res.status(400).json({msg: error.message});     
+    }
+
+    try {
+        await usuario.update({
+            token: null,
+            password: password.trim()
+        });
+
+        res.json({
+            msg: "Nuevo Password Creado Correctamente"
+        });
+    } catch (error) {
+        console.log(error);
+    }
+
+}
+
+// privados
+
+// Actualizar perfil
+const actualizarPerfil = async (req, res) => {
+    const {id} = req.params;
+    const {nombre_user, apellido_user, cedula_user, correo_user, telefono_user} = req.body;
+
+    // existe el usuario del id
+    const usuario = await Usuario.findByPk(id);
+
+    // usuariop no encontrado
+    if (!usuario) {
+        const error = new Error("El usuario no existe");
+        return res.status(403).json({msg: error.message});
+    }
+
+    // Validar cuando se cambie el Email no sea el mismo
+    if (usuario.correo_user !== correo_user) {
+        // miramos si el usuario existe
+        const usuarioExiste = await Usuario.findOne({where: {correo_user}});
+
+        // validar que el email no sea duplicado
+        if (usuarioExiste) {
+            const error = new Error("El Email ya esta Registrado");
+            return res.status(400).json({msg: error.message});
+        }
+    }
+
+    try {
+        const usuarioActualizado = await usuario.update({
+            nombre_user : nombre_user || usuario.nombre_user,
+            apellido_user : apellido_user || usuario.apellido_user,
+            cedula_user : cedula_user || usuario.cedula_user,
+            correo_user : correo_user || usuario.correo_user,
+            telefono_user : telefono_user || usuario.telefono_user
+        });
+
+        res.json(usuarioActualizado);
+
+    } catch (error) {
+        console.log(error);
+    }
+
+}
+
+// Actualizar Password
+const actualizarPassword = async (req, res) => {
+    const {id_usuario} = req.usuario; // variable guardada cuando se autentico en authMiddleware.js
+    const {actualPassword, password} = req.body; // estos datos depende de react
+
+    // comprobar que el usuario existe
+    // existe el usuario del id
+    const usuario = await Usuario.findByPk(id_usuario);
+
+    // usuariop no encontrado
+    if (!usuario) {
+        const error = new Error("El usuario no existe");
+        return res.status(403).json({msg: error.message});
+    }
+
+    // validar password
+    if (await usuario.verificarPassword(actualPassword)) {
+        // agregamos el nuevo password
+        await usuario.update({
+            password: password.trim()
+        });
+
+        res.json({
+            msg: 'Password almacenado correctamente',
+            error: false
+        });
+    } else {
+        const error = new Error("El passwoard actual es invalido");
+        return res.status(403).json({msg: error.message});  
+    }
+
+}
+
 
 
 // exportaciones
 export {
     registrarUsuario,
     confirmarUsuario,
-    autenticar
+    autenticar,
+    perfilUsuario,
+    olvidePassword,
+    comprobarToken,
+    nuevoPassword,
+    actualizarPerfil,
+    actualizarPassword
 }
