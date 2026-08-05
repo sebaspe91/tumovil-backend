@@ -31,6 +31,10 @@ const Usuario = db.define('usuarios', {
         type: Siquelize.STRING,
         defaultValue: "VENDEDOR"
     },
+    estado_user: {
+        type: Siquelize.BOOLEAN,
+        defaultValue: true
+    },
     token: {
         type: Siquelize.STRING,
         defaultValue: generarId

@@ -292,6 +292,149 @@ const actualizarPassword = async (req, res) => {
 
 }
 
+// lista de usuarios
+const listaUsuarios = async (req, res) => {
+    const {id} = req.params;
+
+    const usuarioExiste = await Usuario.findByPk(id);
+
+    if (!usuarioExiste) {
+        const error = new Error('Usuario no registrado');
+        return res.status(404).json({msg: error.message});
+    }
+
+    if (usuarioExiste.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(404).json({msg: error.message});
+    }
+
+    // si todo esta bien
+    try {
+        const usuarios = await Usuario.findAll({ 
+            where: {
+                confirmar : true,
+                estado_user: true
+            },
+            attributes: { exclude: ['password', 'estado_user', 'token'] } 
+        });
+
+        res.json({
+            msg: "Lista de Usuarios",
+            usuarios
+        });
+    } catch (error) {
+        const err = new Error('Los Usuarios no existen');
+        return res.status(401).json({msg: err.message}); 
+    }
+    
+}
+
+// Obtener un paciente en especifico
+const obtenerUsuario = async (req, res) => {
+    try {
+        const {id} = req.params;
+
+        const usuarioExiste = await Usuario.findByPk(id, {
+            attributes: { exclude: ['password', 'token'] }
+        });
+
+        if (!usuarioExiste) {
+            const error = new Error('Usuario no registrado');
+            return res.status(404).json({msg: error.message});
+        }
+
+        // validacion para el usuario que esta logiado
+        // if (usuarioExiste.tipo_user !== 'ADMIN') {
+        //     const error = new Error('No tiene permisos para esta accion');
+        //     return res.status(404).json({msg: error.message});
+        // }
+
+        res.json(usuarioExiste);
+    } catch (error) {
+        const err = new Error('El Usuario no existe');
+        return res.status(401).json({msg: err.message}); 
+    }
+
+}
+
+
+// actualizar usuario
+const actualizarUsuario = async (req, res) => {
+    try {
+        const {id} = req.params;
+        const {nombre_user, apellido_user, cedula_user, correo_user, telefono_user, tipo_user, estado_user} = req.body;
+
+        const usuario = await Usuario.findByPk(id);
+
+        // usuariop no encontrado
+        if (!usuario) {
+            const error = new Error("El usuario no existe");
+            return res.status(403).json({msg: error.message});
+        }
+
+        // Validar cuando se cambie el Email no sea el mismo
+        if (usuario.correo_user !== correo_user) {
+            // miramos si el usuario existe
+            const usuarioExiste = await Usuario.findOne({where: {correo_user}});
+
+            // validar que el email no sea duplicado
+            if (usuarioExiste) {
+                const error = new Error("El Email ya esta Registrado");
+                return res.status(400).json({msg: error.message});
+            }
+        }
+
+        // Actualizar usuario
+        const usuarioActualizado = await usuario.update({
+            nombre_user : nombre_user || usuario.nombre_user,
+            apellido_user : apellido_user || usuario.apellido_user,
+            cedula_user : cedula_user || usuario.cedula_user,
+            correo_user : correo_user || usuario.correo_user,
+            telefono_user : telefono_user || usuario.telefono_user,
+            tipo_user : tipo_user || usuario.tipo_user,
+            estado_user : estado_user || usuario.estado_user
+        }); 
+
+        res.json({
+            msg: "Usuario Actualizado",
+            usuarioActualizado
+        });
+    } catch (error) {
+        const err = new Error('El Usuario no existe');
+        return res.status(401).json({msg: err.message}); 
+    }
+}
+
+
+// eliminar un usuario
+const eliminarUsuario = async (req, res) => {
+    try {
+        const {id} = req.params;
+        const usuario = await Usuario.findByPk(id);
+
+        if (!usuario) {
+            const error = new Error("El usuario no existe");
+            return res.status(403).json({msg: error.message});
+        }
+
+        // validar que es el admin q va eliminar
+        // .... //
+
+        // eliminar usuario
+        await usuario.update({
+            estado_user: false
+        });
+
+        res.json({
+            msg: "El Usuario fue eliminado"
+        });
+
+    } catch (error) {
+        const err = new Error('El Usuario no existe');
+        return res.status(401).json({msg: err.message}); 
+    }
+}
+
 
 
 // exportaciones
@@ -304,5 +447,9 @@ export {
     comprobarToken,
     nuevoPassword,
     actualizarPerfil,
-    actualizarPassword
+    actualizarPassword,
+    listaUsuarios,
+    obtenerUsuario,
+    actualizarUsuario,
+    eliminarUsuario
 }

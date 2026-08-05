@@ -9,7 +9,11 @@ import {
     comprobarToken,
     nuevoPassword,
     actualizarPerfil,
-    actualizarPassword
+    actualizarPassword,
+    listaUsuarios,
+    obtenerUsuario,
+    actualizarUsuario,
+    eliminarUsuario
 } from "../controllers/usuarioController.js";
 import checkAuth from '../middleware/authMiddleware.js';
 
@@ -33,6 +37,10 @@ usuarioRoutes.post('/olvide-password/:token', nuevoPassword); // crear el nuevo 
 usuarioRoutes.get('/perfil', checkAuth, perfilUsuario); // incias sesion
 usuarioRoutes.put('/perfil/:id', checkAuth, actualizarPerfil); // incias sesion - actualiza perfil
 usuarioRoutes.put('/cambiar-password', checkAuth, actualizarPassword); // incias sesion - actualiza password
+usuarioRoutes.get('/lista-usuarios/:id', checkAuth, listaUsuarios); // incias sesion - lista de usuarios
+usuarioRoutes.get('/obtener-usuario/:id', checkAuth, obtenerUsuario); // incias sesion - obtener un usuario
+usuarioRoutes.put('/actualizar-usuario/:id', checkAuth, actualizarUsuario); // incias sesion - actualizar un usuario
+usuarioRoutes.put('/eliminar-usuario/:id', checkAuth, eliminarUsuario); // incias sesion - elimina un usuario
 
 
 // exportamos
