@@ -1,7 +1,7 @@
+import { where } from "sequelize";
 import Usuario from "../models/Usuario.js";
 import generarJWT from "../helpers/generarJWT.js";
 import generarId from "../helpers/generarId.js";
-import { where } from "sequelize";
 import e from "express";
 
 
@@ -29,11 +29,11 @@ const registrarUsuario = async (req, res) => {
 
         // guardando los datos en la DB
         const usuario = await Usuario.create({
-            nombre_user,
-            apellido_user,
-            cedula_user,
+            nombre_user: nombre_user.toUpperCase(),
+            apellido_user: apellido_user.toUpperCase(),
+            cedula_user: cedula_user,
             password,
-            correo_user,
+            correo_user: correo_user.toUpperCase(),
             telefono_user
         });
 
@@ -244,11 +244,11 @@ const actualizarPerfil = async (req, res) => {
 
     try {
         const usuarioActualizado = await usuario.update({
-            nombre_user : nombre_user || usuario.nombre_user,
-            apellido_user : apellido_user || usuario.apellido_user,
-            cedula_user : cedula_user || usuario.cedula_user,
-            correo_user : correo_user || usuario.correo_user,
-            telefono_user : telefono_user || usuario.telefono_user
+            nombre_user : nombre_user.toUpperCase() || usuario.nombre_user.toUpperCase(),
+            apellido_user : apellido_user.toUpperCase() || usuario.apellido_user.toUpperCase(),
+            cedula_user : cedula_user.toUpperCase() || usuario.cedula_user.toUpperCase(),
+            correo_user : correo_user.toUpperCase() || usuario.correo_user.toUpperCase(),
+            telefono_user : telefono_user.toUpperCase() || usuario.telefono_user.toUpperCase()
         });
 
         res.json(usuarioActualizado);
@@ -364,16 +364,22 @@ const actualizarUsuario = async (req, res) => {
         const {id} = req.params;
         const {nombre_user, apellido_user, cedula_user, correo_user, telefono_user, tipo_user, estado_user} = req.body;
 
-        const usuario = await Usuario.findByPk(id);
+        const usuarioActual = await Usuario.findByPk(id);
+
+        // validar si es usuario admin
+        if (req.usuario.tipo_user !== 'ADMIN') {
+            const error = new Error('No tiene permisos para esta accion');
+            return res.status(404).json({msg: error.message});
+        }
 
         // usuariop no encontrado
-        if (!usuario) {
+        if (!usuarioActual) {
             const error = new Error("El usuario no existe");
             return res.status(403).json({msg: error.message});
         }
 
         // Validar cuando se cambie el Email no sea el mismo
-        if (usuario.correo_user !== correo_user) {
+        if (usuarioActual.correo_user !== correo_user) {
             // miramos si el usuario existe
             const usuarioExiste = await Usuario.findOne({where: {correo_user}});
 
@@ -385,14 +391,14 @@ const actualizarUsuario = async (req, res) => {
         }
 
         // Actualizar usuario
-        const usuarioActualizado = await usuario.update({
-            nombre_user : nombre_user || usuario.nombre_user,
-            apellido_user : apellido_user || usuario.apellido_user,
-            cedula_user : cedula_user || usuario.cedula_user,
-            correo_user : correo_user || usuario.correo_user,
-            telefono_user : telefono_user || usuario.telefono_user,
-            tipo_user : tipo_user || usuario.tipo_user,
-            estado_user : estado_user || usuario.estado_user
+        const usuarioActualizado = await usuarioActual.update({
+            nombre_user : nombre_user.toUpperCase() || usuarioActual.nombre_user.toUpperCase(),
+            apellido_user : apellido_user.toUpperCase() || usuarioActual.apellido_user.toUpperCase(),
+            cedula_user : cedula_user || usuarioActual.cedula_user,
+            correo_user : correo_user.toUpperCase() || usuarioActual.correo_user.toUpperCase(),
+            telefono_user : telefono_user || usuarioActual.telefono_user,
+            tipo_user : tipo_user.toUpperCase() || usuarioActual.tipo_user.toUpperCase(),
+            estado_user : estado_user || usuarioActual.estado_user
         }); 
 
         res.json({
@@ -409,6 +415,7 @@ const actualizarUsuario = async (req, res) => {
 // eliminar un usuario
 const eliminarUsuario = async (req, res) => {
     try {
+        const {tipo_user} = req.usuario;
         const {id} = req.params;
         const usuario = await Usuario.findByPk(id);
 
@@ -417,8 +424,11 @@ const eliminarUsuario = async (req, res) => {
             return res.status(403).json({msg: error.message});
         }
 
-        // validar que es el admin q va eliminar
-        // .... //
+        // validar si es usuario admin
+        if (tipo_user !== 'ADMIN') {
+            const error = new Error('No tiene permisos para esta accion');
+            return res.status(404).json({msg: error.message});
+        }
 
         // eliminar usuario
         await usuario.update({

@@ -1,46 +1,46 @@
-import Siquelize from 'sequelize';
+import Sequelize from 'sequelize';
 import db from '../config/db.js';
 import bcrypt from 'bcryptjs';
 import generarId from '../helpers/generarId.js';
 
 const Usuario = db.define('usuarios', {
     id_usuario: {
-        type: Siquelize.INTEGER,
+        type: Sequelize.INTEGER,
         autoIncrement: true,
         primaryKey: true
     },
     nombre_user: {
-        type: Siquelize.STRING
+        type: Sequelize.STRING
     },
     apellido_user: {
-        type: Siquelize.STRING
+        type: Sequelize.STRING
     },
     cedula_user: {
-        type: Siquelize.STRING
+        type: Sequelize.STRING
     },
     password: {
-        type: Siquelize.STRING
+        type: Sequelize.STRING
     },
     correo_user: {
-        type: Siquelize.STRING
+        type: Sequelize.STRING
     },
     telefono_user: {
-        type: Siquelize.STRING
+        type: Sequelize.STRING
     },
     tipo_user: {
-        type: Siquelize.STRING,
+        type: Sequelize.STRING,
         defaultValue: "VENDEDOR"
     },
     estado_user: {
-        type: Siquelize.BOOLEAN,
+        type: Sequelize.BOOLEAN,
         defaultValue: true
     },
     token: {
-        type: Siquelize.STRING,
+        type: Sequelize.STRING,
         defaultValue: generarId
     },
     confirmar: {
-        type: Siquelize.BOOLEAN,
+        type: Sequelize.BOOLEAN,
         defaultValue:false
     },
 }, {

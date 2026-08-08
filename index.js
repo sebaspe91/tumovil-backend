@@ -2,7 +2,10 @@
 import express from "express";
 import dotenv from 'dotenv';
 import usuarioRoutes from "./routes/usuarioRoutes.js";
+import marcaRoutes from "./routes/marcaRoutes.js";
+import productoRoutes from "./routes/productoRoutes.js";
 import db from "./config/db.js";
+import './associations/index.js'; // Se hace para que se ejecuten las relaciones de Sequelize y usar los includes
 
 // inicializamos
 const app = express();
@@ -22,6 +25,8 @@ db.authenticate()
 
 // redireccionar a una app en especifico
 app.use('/api/usuarios', usuarioRoutes);
+app.use('/api/marcas', marcaRoutes);
+app.use('/api/productos', productoRoutes);
 
 
 
