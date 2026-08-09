@@ -17,7 +17,7 @@ const Marca = db.define('marcas', {
     estado_marca: {
         type: Sequelize.BOOLEAN,
         defaultValue: true
-    },
+    }
 });
 
 

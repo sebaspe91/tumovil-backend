@@ -5,7 +5,8 @@ import {
     obtenerProducto,
     actualizarProducto,
     eliminarProducto,
-    listaProductosEliminados
+    listaProductosEliminados,
+    activarProducto
 } from "../controllers/productoController.js";
 import checkAuth from "../middleware/authMiddleware.js";
 
@@ -25,6 +26,7 @@ productoRoutes.put('/eliminar/:id', checkAuth, eliminarProducto);
 productoRoutes.route('/:id')
     .get(checkAuth, obtenerProducto)
     .put(checkAuth, actualizarProducto)
+    .patch(checkAuth, activarProducto);
 // fin
 
 

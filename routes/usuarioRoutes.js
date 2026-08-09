@@ -13,7 +13,9 @@ import {
     listaUsuarios,
     obtenerUsuario,
     actualizarUsuario,
-    eliminarUsuario
+    eliminarUsuario,
+    listaUsuariosEliminados,
+    activarUsurio
 } from "../controllers/usuarioController.js";
 import checkAuth from '../middleware/authMiddleware.js';
 
@@ -41,6 +43,8 @@ usuarioRoutes.get('/lista-usuarios/:id', checkAuth, listaUsuarios); // incias se
 usuarioRoutes.get('/obtener-usuario/:id', checkAuth, obtenerUsuario); // incias sesion - obtener un usuario
 usuarioRoutes.put('/actualizar-usuario/:id', checkAuth, actualizarUsuario); // incias sesion - actualizar un usuario
 usuarioRoutes.put('/eliminar-usuario/:id', checkAuth, eliminarUsuario); // incias sesion - elimina un usuario
+usuarioRoutes.get('/eliminados', checkAuth, listaUsuariosEliminados); // lista user eliminados
+usuarioRoutes.patch('/activar/:id', checkAuth, activarUsurio); // activar user
 
 
 // exportamos

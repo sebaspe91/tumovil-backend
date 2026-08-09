@@ -24,7 +24,7 @@ const registrarUsuario = async (req, res) => {
 
         if (usuarioExiste) {
             const error = new Error('El correo ya esta registrado');
-            return res.status(400).json({msg: error.message});
+            return res.status(409).json({msg: error.message});
         }
 
         // guardando los datos en la DB
@@ -46,6 +46,8 @@ const registrarUsuario = async (req, res) => {
       
     } catch (error) {
         console.log(error);
+        const err = new Error('Error al registrar al usuario');
+        return res.status(500).json({msg: err.message}); 
     }
 }
 
@@ -74,6 +76,8 @@ const confirmarUsuario = async (req, res) => {
 
     } catch (error) {
         console.log(error);
+        const err = new Error('Error al confirmar usuario');
+        return res.status(500).json({msg: err.message}); 
     }
 }
 
@@ -158,6 +162,8 @@ const olvidePassword = async (req, res) => {
 
     } catch (error) {
         console.log(error);
+        const err = new Error('Error en la operacion olvide password');
+        return res.status(500).json({msg: err.message}); 
     }
 
 } 
@@ -210,6 +216,8 @@ const nuevoPassword = async (req, res) => {
         });
     } catch (error) {
         console.log(error);
+        const err = new Error('Error al actualizar el password de usuarios');
+        return res.status(500).json({msg: err.message}); 
     }
 
 }
@@ -227,7 +235,7 @@ const actualizarPerfil = async (req, res) => {
     // usuariop no encontrado
     if (!usuario) {
         const error = new Error("El usuario no existe");
-        return res.status(403).json({msg: error.message});
+        return res.status(404).json({msg: error.message});
     }
 
     // Validar cuando se cambie el Email no sea el mismo
@@ -238,7 +246,7 @@ const actualizarPerfil = async (req, res) => {
         // validar que el email no sea duplicado
         if (usuarioExiste) {
             const error = new Error("El Email ya esta Registrado");
-            return res.status(400).json({msg: error.message});
+            return res.status(409).json({msg: error.message});
         }
     }
 
@@ -255,6 +263,8 @@ const actualizarPerfil = async (req, res) => {
 
     } catch (error) {
         console.log(error);
+        const err = new Error('Error al Actualizar el usuario');
+        return res.status(500).json({msg: err.message}); 
     }
 
 }
@@ -271,7 +281,7 @@ const actualizarPassword = async (req, res) => {
     // usuariop no encontrado
     if (!usuario) {
         const error = new Error("El usuario no existe");
-        return res.status(403).json({msg: error.message});
+        return res.status(404).json({msg: error.message});
     }
 
     // validar password
@@ -287,7 +297,7 @@ const actualizarPassword = async (req, res) => {
         });
     } else {
         const error = new Error("El passwoard actual es invalido");
-        return res.status(403).json({msg: error.message});  
+        return res.status(404).json({msg: error.message});  
     }
 
 }
@@ -303,9 +313,9 @@ const listaUsuarios = async (req, res) => {
         return res.status(404).json({msg: error.message});
     }
 
-    if (usuarioExiste.tipo_user !== 'ADMIN') {
+    if (req.usuario.tipo_user !== 'ADMIN') {
         const error = new Error('No tiene permisos para esta accion');
-        return res.status(404).json({msg: error.message});
+        return res.status(403).json({msg: error.message});
     }
 
     // si todo esta bien
@@ -323,8 +333,8 @@ const listaUsuarios = async (req, res) => {
             usuarios
         });
     } catch (error) {
-        const err = new Error('Los Usuarios no existen');
-        return res.status(401).json({msg: err.message}); 
+        const err = new Error('Error al obtener la lista de usuarios');
+        return res.status(500).json({msg: err.message}); 
     }
     
 }
@@ -351,8 +361,8 @@ const obtenerUsuario = async (req, res) => {
 
         res.json(usuarioExiste);
     } catch (error) {
-        const err = new Error('El Usuario no existe');
-        return res.status(401).json({msg: err.message}); 
+        const err = new Error('Error al obtener el usuario');
+        return res.status(500).json({msg: err.message}); 
     }
 
 }
@@ -369,13 +379,13 @@ const actualizarUsuario = async (req, res) => {
         // validar si es usuario admin
         if (req.usuario.tipo_user !== 'ADMIN') {
             const error = new Error('No tiene permisos para esta accion');
-            return res.status(404).json({msg: error.message});
+            return res.status(403).json({msg: error.message});
         }
 
         // usuariop no encontrado
         if (!usuarioActual) {
             const error = new Error("El usuario no existe");
-            return res.status(403).json({msg: error.message});
+            return res.status(404).json({msg: error.message});
         }
 
         // Validar cuando se cambie el Email no sea el mismo
@@ -386,7 +396,7 @@ const actualizarUsuario = async (req, res) => {
             // validar que el email no sea duplicado
             if (usuarioExiste) {
                 const error = new Error("El Email ya esta Registrado");
-                return res.status(400).json({msg: error.message});
+                return res.status(409).json({msg: error.message});
             }
         }
 
@@ -406,8 +416,8 @@ const actualizarUsuario = async (req, res) => {
             usuarioActualizado
         });
     } catch (error) {
-        const err = new Error('El Usuario no existe');
-        return res.status(401).json({msg: err.message}); 
+        const err = new Error('Erro al actualizar al usuario');
+        return res.status(500).json({msg: err.message}); 
     }
 }
 
@@ -421,13 +431,13 @@ const eliminarUsuario = async (req, res) => {
 
         if (!usuario) {
             const error = new Error("El usuario no existe");
-            return res.status(403).json({msg: error.message});
+            return res.status(404).json({msg: error.message});
         }
 
         // validar si es usuario admin
         if (tipo_user !== 'ADMIN') {
             const error = new Error('No tiene permisos para esta accion');
-            return res.status(404).json({msg: error.message});
+            return res.status(403).json({msg: error.message});
         }
 
         // eliminar usuario
@@ -440,11 +450,69 @@ const eliminarUsuario = async (req, res) => {
         });
 
     } catch (error) {
-        const err = new Error('El Usuario no existe');
-        return res.status(401).json({msg: err.message}); 
+        const err = new Error('Error al eliminar el Usuario');
+        return res.status(500).json({msg: err.message}); 
     }
 }
 
+
+// Lista usuarios eliminados
+const listaUsuariosEliminados = async (req, res) => {
+
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(403).json({msg: error.message});
+    }
+
+    try {
+        const usuario = await Usuario.findAll({
+            where: {estado_user: 0}
+        });
+
+        res.json({
+            usuario
+        });
+    } catch (error) {
+        console.log(error);
+        const err = new Error('Error al listar los usuarios eliminados');
+        return res.status(500).json({msg: err.message});
+    }
+}
+
+
+// activar
+const activarUsurio = async (req, res) => {
+
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(403).json({msg: error.message});
+    }
+
+    try {
+        const {id} = req.params;
+
+        const usuario = await Usuario.findByPk(id);
+        
+        if (!usuario) {
+            const error = new Error('El usuario no existe');
+            return res.status(404).json({msg: error.message});
+        }
+
+        //  todo bien 
+       await usuario.update({
+            estado_user: true
+        });
+
+        res.json({
+            msg: "El usuario se Activado correctamente"
+        });
+      
+    } catch (error) {
+        console.log(error);
+        const err = new Error('Error al activar el usuario');
+        return res.status(500).json({msg: err.message});
+    }
+}
 
 
 // exportaciones
@@ -461,5 +529,7 @@ export {
     listaUsuarios,
     obtenerUsuario,
     actualizarUsuario,
-    eliminarUsuario
+    eliminarUsuario,
+    listaUsuariosEliminados,
+    activarUsurio
 }

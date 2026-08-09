@@ -4,7 +4,9 @@ import {
     listaMarcas,
     obtenerMarca,
     actualizarMarca,
-    eliminarMarca
+    eliminarMarca,
+    listaMarcasEliminados,
+    activarMarca
 } from '../controllers/marcaController.js';
 import checkAuth from '../middleware/authMiddleware.js';
 
@@ -18,12 +20,15 @@ marcaRoutes.route('/')
     .get(checkAuth, listaMarcas)
 // Fin --
 
+marcaRoutes.get('/eliminados', checkAuth, listaMarcasEliminados);
+marcaRoutes.put('/eliminar/:id', checkAuth, eliminarMarca);
+
 marcaRoutes.route('/:id')
     .get(checkAuth, obtenerMarca)
-    .put(checkAuth, actualizarMarca)    
+    .put(checkAuth, actualizarMarca)  
+    .patch(checkAuth, activarMarca)  
 // fin ---
 
-marcaRoutes.put('/eliminar/:id', checkAuth, eliminarMarca);
 
 // exportaciones
 export default marcaRoutes;

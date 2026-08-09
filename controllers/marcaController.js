@@ -22,7 +22,7 @@ const registrarMarca = async (req, res) => {
         // si existe el codigo
         if (marcaExiste) {
             const error = new Error('El código de marca ya esta registrado, debe de ser unico');
-            return res.status(400).json({msg: error.message});
+            return res.status(409).json({msg: error.message});
         }
 
         const marca = await Marca.create({
@@ -36,8 +36,8 @@ const registrarMarca = async (req, res) => {
         });
     } catch (error) {
         console.log(error)
-        const err = new Error('No se registro la marca');
-        return res.status(404).json({msg: err.message});
+        const err = new Error('Error al registrar la marca');
+        return res.status(500).json({msg: err.message});
     }
 }
 
@@ -55,6 +55,8 @@ const listaMarcas = async (req, res) => {
         });
     } catch (error) {
         console.log(error);
+        const err = new Error('Error al listar las marcas');
+        return res.status(500).json({msg: err.message});
     }
 }
 
@@ -67,13 +69,15 @@ const obtenerMarca = async (req, res) => {
         const marca = await Marca.findByPk(id);
 
         if (!marca) {
-            const error = new Error('Marca del producto no existe');
-            return res.status(400).json({msg: error.message});
+            const error = new Error('La Marca no existe');
+            return res.status(404).json({msg: error.message});
         }
 
         res.json({marca});
     } catch (error) {
         console.log(error);
+        const err = new Error('Error al obtener una marca');
+        return res.status(500).json({msg: err.message});
     }
 }
 
@@ -86,8 +90,8 @@ const actualizarMarca = async (req, res) => {
         const marca = await Marca.findByPk(id);
         
         if (!marca) {
-                const error = new Error('Marca del producto no existe');
-            return res.status(400).json({msg: error.message});
+                const error = new Error('La Marca no existe');
+            return res.status(404).json({msg: error.message});
         }
 
         // Valorar que el codigo ingresado no se repita
@@ -97,7 +101,7 @@ const actualizarMarca = async (req, res) => {
             // validar que el email no sea duplicado
             if (marcaExiste) {
                 const error = new Error("El codigo para marca ya existe");
-                return res.status(400).json({msg: error.message});
+                return res.status(409).json({msg: error.message});
             }
         }
 
@@ -114,6 +118,8 @@ const actualizarMarca = async (req, res) => {
       
     } catch (error) {
         console.log(error);
+        const err = new Error('Error al actualizar la marca');
+        return res.status(500).json({msg: err.message});
     }
 }
 
@@ -144,10 +150,58 @@ const eliminarMarca = async (req, res) => {
             msg: "La marca fue eliminado"
         });
     } catch (error) {
-        const err = new Error('La marca no existe');
-        return res.status(401).json({msg: err.message}); 
+        const err = new Error('Error al eliminar marca');
+        return res.status(500).json({msg: err.message}); 
     }
 }
+
+// Lista marcas eliminados
+const listaMarcasEliminados = async (req, res) => {
+    try {
+        const marca = await Marca.findAll({
+            where: {estado_marca: 0}
+        });
+
+        res.json({
+            marca
+        });
+    } catch (error) {
+        console.log(error);
+        const err = new Error('No se pudo listar las marca eliminadas');
+        return res.status(500).json({msg: err.message});
+    }
+}
+
+
+// activar
+const activarMarca = async (req, res) => {
+
+    try {
+        const {id} = req.params;
+
+        const marca = await Marca.findByPk(id);
+        
+        if (!marca) {
+            const error = new Error('La marca no existe');
+            return res.status(404).json({msg: error.message});
+        }
+
+        //  todo bien 
+       await marca.update({
+            estado_marca: true
+        });
+
+        res.json({
+            msg: "La marca se Activado correctamente"
+        });
+      
+    } catch (error) {
+        console.log(error);
+        const err = new Error('Error al activar la marca');
+        return res.status(500).json({msg: err.message});
+    }
+}
+
 
 
 
@@ -156,5 +210,7 @@ export {
     listaMarcas,
     obtenerMarca,
     actualizarMarca,
-    eliminarMarca
+    eliminarMarca,
+    listaMarcasEliminados,
+    activarMarca
 }

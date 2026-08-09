@@ -1,4 +1,4 @@
-import Producto from "../models/Producto.js";
+import { Producto, Categoria, Marca } from "../associations/index.js";
 
 const registrarProducto = async (req, res) => {
     const {categoria_id, marca_id, nombre_prod, cantidad_prod, precio_compra, precio_venta, detalle_prod} = req.body;
@@ -37,7 +37,7 @@ const registrarProducto = async (req, res) => {
         const productoExiste = await Producto.findOne({where:{nombre_prod}});
         if (productoExiste) {
             const error = new Error('El producto ya esta registrado');
-            return res.status(400).json({msg: error.message});
+            return res.status(409).json({msg: error.message});
         }
 
         // toda validacion superada
@@ -66,7 +66,11 @@ const registrarProducto = async (req, res) => {
 const listaProductos = async (req, res) => {
     try {
         const productos = await Producto.findAll({
-            where: {estado_prod: true}
+            where: { estado_prod: true },
+            include: [
+                { model: Categoria, as: 'categoria' },
+                { model: Marca, as: 'marca' }
+            ]
         });
 
         res.json({
@@ -75,26 +79,31 @@ const listaProductos = async (req, res) => {
     } catch (error) {
         console.log(error);
         const err = new Error('No se pudo listar los productos');
-        return res.status(500).json({msg: err.message});
+        return res.status(500).json({ msg: err.message });
     }
 }
 
 // obtener un producto
 const obtenerProducto = async (req, res) => {
     try {
-        const {id} = req.params;
+        const { id } = req.params;
 
-        const producto = await Producto.findByPk(id);
+        const producto = await Producto.findByPk(id, {
+            include: [
+                { model: Categoria, as: 'categoria' },
+                { model: Marca, as: 'marca' }
+            ]
+        });
 
         if (!producto) {
             const error = new Error('El producto no existe');
-            return res.status(400).json({msg: error.message});
+            return res.status(404).json({ msg: error.message });
         }
-        res.json({producto});
+        res.json({ producto });
     } catch (error) {
         console.log(error);
         const err = new Error('No se pudo Obtener el producto');
-        return res.status(500).json({msg: err.message});
+        return res.status(500).json({ msg: err.message });
     }
 }
 
@@ -109,24 +118,24 @@ const actualizarProducto = async (req, res) => {
         // validar que exista el producto
         if (!producto) {
             const error = new Error('El producto no existe');
-            return res.status(400).json({msg: error.message});  
+            return res.status(404).json({msg: error.message});  
         }
 
         // solo admin
         if (req.usuario.tipo_user !== 'ADMIN') {
             const error = new Error('No tiene permisos para esta accion');
-            return res.status(404).json({msg: error.message});
+            return res.status(403).json({msg: error.message});
         }
 
         const actualizarProducto = await producto.update({
-            categoria_id: Number(categoria_id) || producto.categoria_id,
-            marca_id: Number(marca_id) || producto.marca_id,
-            nombre_prod: nombre_prod.toUpperCase().trim() || producto.nombre_prod,
-            cantidad_prod: Number(cantidad_prod) || producto.cantidad_prod,
-            precio_compra: parseFloat(precio_compra) || producto.precio_compra,
-            precio_venta: parseFloat(precio_venta) || producto.precio_venta,
-            estado_prod: Number(estado_prod) || producto.estado_prod,
-            detalle_prod: detalle_prod.toUpperCase().trim() || producto.detalle_prod 
+            categoria_id: categoria_id !== undefined ? Number(categoria_id) : producto.categoria_id,
+            marca_id: marca_id !== undefined ? Number(marca_id) : producto.marca_id,
+            nombre_prod: nombre_prod ? nombre_prod.toUpperCase().trim() : producto.nombre_prod,
+            cantidad_prod: cantidad_prod !== undefined ? Number(cantidad_prod) : producto.cantidad_prod,
+            precio_compra: precio_compra !== undefined ? parseFloat(precio_compra) : producto.precio_compra,
+            precio_venta: precio_venta !== undefined ? parseFloat(precio_venta) : producto.precio_venta,
+            estado_prod: estado_prod !== undefined ? Boolean(Number(estado_prod)) : producto.estado_prod,
+            detalle_prod: detalle_prod ? detalle_prod.toUpperCase().trim() : producto.detalle_prod
         });
 
         res.json({
@@ -149,13 +158,13 @@ const eliminarProducto = async (req, res) => {
 
         if (!producto) {
             const error = new Error('El producto no existe');
-            return res.status(400).json({msg: error.message}); 
+            return res.status(404).json({msg: error.message}); 
         }
 
         // solo admin
         if (req.usuario.tipo_user !== 'ADMIN') {
             const error = new Error('No tiene permisos para esta accion');
-            return res.status(404).json({msg: error.message});
+            return res.status(403).json({msg: error.message});
         }
 
         // eliminar
@@ -177,18 +186,58 @@ const eliminarProducto = async (req, res) => {
 
 // Lista productos eliminados
 const listaProductosEliminados = async (req, res) => {
-    console.log('Hola Mundo')
+    // validar que se admin
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(403).json({ msg: error.message });
+    }
+
     try {
         const productos = await Producto.findAll({
-            where: {estado_prod: 0}
+            where: { estado_prod: 0 },
+            include: [
+                { model: Categoria, as: 'categoria' },
+                { model: Marca, as: 'marca' }
+            ]
         });
 
         res.json({
+            msg: "Producto Activado",
             productos
         });
     } catch (error) {
         console.log(error);
         const err = new Error('No se pudo listar los productos eliminados');
+        return res.status(500).json({ msg: err.message });
+    }
+}
+
+
+// activar
+const activarProducto = async (req, res) => {
+
+    try {
+        const {id} = req.params;
+
+        const producto = await Producto.findByPk(id);
+        
+        if (!producto) {
+            const error = new Error('El producto no existe');
+            return res.status(404).json({msg: error.message});
+        }
+
+        //  todo bien 
+       await producto.update({
+            estado_prod: true
+        });
+
+        res.json({
+            msg: "El producto se Activado correctamente"
+        });
+      
+    } catch (error) {
+        console.log(error);
+        const err = new Error('Error al activar el producto');
         return res.status(500).json({msg: err.message});
     }
 }
@@ -202,5 +251,6 @@ export {
     obtenerProducto,
     actualizarProducto,
     eliminarProducto,
-    listaProductosEliminados
+    listaProductosEliminados,
+    activarProducto
 }
