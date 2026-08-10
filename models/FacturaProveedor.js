@@ -19,6 +19,8 @@ const FacturaProveedor = db.define('factura_proveedor', {
     fecha_fp: {
         type: Sequelize.DATE
     }
+}, {
+    freezeTableName: true
 });
 
 export default FacturaProveedor;

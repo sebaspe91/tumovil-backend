@@ -8,6 +8,7 @@ import clienteRoutes from "./routes/clienteRoutes.js";
 import empresaRoutes from "./routes/empresaRoutes.js";
 import categoriaRoutes from "./routes/categoriaRoutes.js";
 import proveedorRoutes from "./routes/proveedorRoutes.js";
+import facturaClienteRoutes from "./routes/facturaClienteRoutes.js";
 import db from "./config/db.js";
 import './associations/index.js'; // Se hace para que se ejecuten las relaciones de Sequelize y usar los includes
 
@@ -35,6 +36,7 @@ app.use('/api/productos', productoRoutes);
 app.use('/api/clientes', clienteRoutes);
 app.use('/api/empresa', empresaRoutes);
 app.use('/api/proveedores', proveedorRoutes);
+app.use('/api/factura-cliente', facturaClienteRoutes);
 
 
 

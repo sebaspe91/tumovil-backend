@@ -19,6 +19,8 @@ const DetalleCliente = db.define('detalle_cliente', {
     precio_dc_venta: {
         type: Sequelize.DOUBLE
     }
+}, {
+    freezeTableName: true
 });
 
 export default DetalleCliente;

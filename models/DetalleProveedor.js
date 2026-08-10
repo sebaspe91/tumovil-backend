@@ -19,6 +19,8 @@ const DetalleProveedor = db.define('detalle_proveedor', {
     precio_dp_compra: {
         type: Sequelize.INTEGER
     }
+}, {
+    freezeTableName: true
 });
 
 export default DetalleProveedor;

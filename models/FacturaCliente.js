@@ -19,6 +19,8 @@ const FacturaCliente = db.define('factura_cliente', {
     fecha_fc: {
         type: Sequelize.DATE
     }
+}, {
+    freezeTableName: true // usa 'factura_cliente' tal cual, sin pluralizar
 });
 
 export default FacturaCliente;
