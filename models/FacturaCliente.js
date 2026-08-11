@@ -18,6 +18,10 @@ const FacturaCliente = db.define('factura_cliente', {
     },
     fecha_fc: {
         type: Sequelize.DATE
+    },
+    estado_fc: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: true
     }
 }, {
     freezeTableName: true // usa 'factura_cliente' tal cual, sin pluralizar

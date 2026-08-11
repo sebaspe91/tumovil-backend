@@ -5,7 +5,10 @@ import {
     obtenerTotalFactura,
     obtenerFacturaCliente,
     listaFacturaCliente,
-    actualizarFactura
+    actualizarFacturaCliente,
+    eliminarFacturaCliente,
+    listaFacturaClienteEliminadas,
+    reactivarFacturaCliente
 } from "../controllers/facturaClienteController.js";
 
 
@@ -19,12 +22,15 @@ facturaClienteRoutes.route('/')
 // fin
 
 
+facturaClienteRoutes.get('/eliminados', checkAuth, listaFacturaClienteEliminadas);
 facturaClienteRoutes.get('/total/:id', checkAuth, obtenerTotalFactura);
+facturaClienteRoutes.put('/eliminar/:id', checkAuth, eliminarFacturaCliente);
 
 
 facturaClienteRoutes.route('/:id')
     .get(checkAuth, obtenerFacturaCliente)
-    .put(checkAuth, actualizarFactura);
+    .put(checkAuth, actualizarFacturaCliente)
+    .patch(checkAuth, reactivarFacturaCliente);
 // fin
 
 
