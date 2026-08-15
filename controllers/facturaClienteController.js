@@ -26,7 +26,7 @@ const registrarFacturaCliente = async (req, res) => {
     try {
         const cliente = await Cliente.findByPk(cliente_id);
         if (!cliente) {
-            await t.rollback();  // cancela la transaction de DB
+            await t.rollback();  // revierte la transaction
             return res.status(404).json({ msg: 'El cliente no existe' });
         }
 
@@ -43,8 +43,6 @@ const registrarFacturaCliente = async (req, res) => {
             empresa_fc_id,
             fecha_fc: new Date()
         }, { transaction: t }); // Se ejecuta esta transaccion sin importar el commit()
-
-        // ACA ES DONDE SE EMPIEZ
 
         // creamos lista para los detalle y su total
         const detallesCreados = [];
@@ -239,7 +237,6 @@ const obtenerTotalFactura = async (req, res) => {
                 as: 'detalles'
             }
         });
-        console.log(factura)
 
         if (!factura) {
             return res.status(404).json({ msg: 'Factura no encontrada' });
@@ -247,7 +244,10 @@ const obtenerTotalFactura = async (req, res) => {
 
         const total = calcularTotalFactura(factura.detalles);
 
-        res.json({ id_fact_cli: factura.id_fact_cli, total });
+        res.json({ 
+            id_fact_cli: factura.id_fact_cli, 
+            total 
+        });
     } catch (error) {
         console.log(error);
         res.status(500).json({ msg: 'No se pudo calcular el total' });

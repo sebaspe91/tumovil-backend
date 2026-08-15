@@ -18,6 +18,10 @@ const FacturaProveedor = db.define('factura_proveedor', {
     },
     fecha_fp: {
         type: Sequelize.DATE
+    },
+    estado_fp: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: true
     }
 }, {
     freezeTableName: true
