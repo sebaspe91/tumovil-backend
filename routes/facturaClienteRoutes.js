@@ -8,7 +8,8 @@ import {
     actualizarFacturaCliente,
     eliminarFacturaCliente,
     listaFacturaClienteEliminadas,
-    reactivarFacturaCliente
+    reactivarFacturaCliente,
+    generarPDFFacturaCliente
 } from "../controllers/facturaClienteController.js";
 
 
@@ -24,6 +25,7 @@ facturaClienteRoutes.route('/')
 
 facturaClienteRoutes.get('/eliminados', checkAuth, listaFacturaClienteEliminadas);
 facturaClienteRoutes.get('/total/:id', checkAuth, obtenerTotalFactura);
+facturaClienteRoutes.get('/factura-pdf/:id', checkAuth, generarPDFFacturaCliente);
 facturaClienteRoutes.put('/eliminar/:id', checkAuth, eliminarFacturaCliente);
 
 

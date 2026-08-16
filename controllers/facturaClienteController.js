@@ -1,4 +1,6 @@
 // controllers/facturaController.js
+import puppeteer from 'puppeteer';
+import plantillaFacturaCliente from '../utils/plantillaFacturaCliente.js';
 import db from '../config/db.js';
 import { FacturaCliente, DetalleCliente, Producto, Cliente, Empresa, Usuario } from '../associations/index.js';
 
@@ -540,6 +542,70 @@ const reactivarFacturaCliente = async (req, res) => {
     }
 };
 
+// factura PDF
+const generarPDFFacturaCliente = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const factura = await FacturaCliente.findByPk(id, {
+            include: [
+                { 
+                    model: Cliente, 
+                    as: 'cliente', 
+                    attributes: ['nombre_cliente', 'apellido_cliente', 'cedula_cliente', 'correo_cliente'] 
+                },
+                { 
+                    model: Empresa, 
+                    as: 'empresa', 
+                    attributes: ['nombre_empresa', 'nit_empresa', 'cel_empresa']
+                },
+                {
+                    model: DetalleCliente,
+                    as: 'detalles',
+                    include: { 
+                        model: Producto, 
+                        as: 'producto', 
+                        attributes: ['nombre_prod'] 
+                    },
+                    attributes: ['precio_dc_venta', 'cantidad_dc_venta']
+                }
+            ]
+        });
+
+        if (!factura) {
+            return res.status(404).json({ msg: 'Factura no encontrada' });
+        }
+
+        const total = calcularTotalFactura(factura.detalles);
+        const html = plantillaFacturaCliente(factura, total);
+
+        const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+
+        // ancho de recibo térmico, alto automático según el contenido
+        const pdfBuffer = await page.pdf({
+            width: '80mm',
+            height: '297mm', // alto grande, se recorta al contenido real al imprimir
+            printBackground: true
+        });
+
+        await browser.close();
+
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename=recibo_${factura.id_fact_cli}.pdf`
+        });
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.log(error);
+        if (!res.headersSent) {
+            res.status(500).json({ msg: 'No se pudo generar el recibo' });
+        }
+    }
+};
+
 export { 
     registrarFacturaCliente,
     obtenerTotalFactura,
@@ -548,5 +614,6 @@ export {
     actualizarFacturaCliente,
     eliminarFacturaCliente,
     listaFacturaClienteEliminadas,
-    reactivarFacturaCliente
+    reactivarFacturaCliente,
+    generarPDFFacturaCliente
 };

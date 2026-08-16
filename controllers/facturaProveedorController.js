@@ -1,3 +1,5 @@
+import puppeteer from 'puppeteer';
+import plantillaFacturaProveedor from '../utils/plantillaFacturaProveedor.js';
 import db from '../config/db.js';
 import { 
     FacturaProveedor, 
@@ -5,7 +7,7 @@ import {
     Producto, 
     Proveedor, 
     Empresa, 
-    Usuario
+    Usuario    
 } from '../associations/index.js';
 
 // calcular factura
@@ -396,6 +398,262 @@ const actualizarFacturaProveedor = async (req, res) => {
 }
 
 
+// Eliminar Factura proveedor
+const elimnarFacturaProveedor = async (req, res) => {
+    const {id} = req.params;
+
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        return res.status(403).json({ msg: 'No tiene permisos para esta acción' });
+    }
+
+    const t = await db.transaction();
+    
+    try {
+        const factura = await FacturaProveedor.findByPk(id, {
+            include: {
+                model: DetalleProveedor,
+                as: 'detalles'
+            },
+            transaction: t
+        }); 
+
+        if (!factura) {
+            await t.rollback();
+            return res.status(404).json({ msg: 'Factura no encontrada' });
+        }
+
+        if (factura.estado_fp === false) {
+            await t.rollback();
+            return res.status(400).json({ msg: 'La factura ya se encuentra eliminada' });
+        }
+
+        // devolver el stock de cada detalle
+        for (const detalle of factura.detalles) {
+            const producto = await Producto.findByPk(detalle.producto_dp_id, { transaction: t });
+            if (producto) {
+                await producto.update({
+                    cantidad_prod: producto.cantidad_prod + detalle.cantidad_dp_compra
+                }, { transaction: t });
+            }
+        }
+
+        // marcar como eliminada en vez de borrar la fila
+        await factura.update({ estado_fp: false }, { transaction: t });
+
+        await t.commit();
+
+        res.json({ msg: 'Factura eliminada correctamente' });
+
+    } catch (error) {
+        await t.rollback();
+        console.log(error);
+        res.status(500).json({ msg: 'No se pudo eliminar la factura' });
+    }
+}
+
+
+// lista de facturas eliminadas
+const listaFacturaProveedorEliminadas = async (req, res) => {
+    try {
+        const facturas = await FacturaProveedor.findAll({
+            where: { estado_fp: false },
+            order: [['fecha_fp', 'DESC']],
+            include: [
+                { 
+                    model: Proveedor, 
+                    as: 'proveedor',
+                    attributes: ['nombre_prov', 'nit_prov', 'correo_prov']
+                },
+                { 
+                    model: Usuario, 
+                    as: 'usuario', 
+                    attributes: ['nombre_user', 'apellido_user', 'cedula_user', 'tipo_user'] 
+
+                },
+                { 
+                    model: Empresa, 
+                    as: 'empresa', 
+                    attributes: ['nombre_empresa', 'nit_empresa', 'cel_empresa'] 
+
+                },
+                {
+                    model: DetalleProveedor,
+                    as: 'detalles',
+                    attributes: ['precio_dp_compra', 'cantidad_dp_compra'],
+                    include: { 
+                        model: Producto, 
+                        as: 'producto', 
+                        attributes: ['nombre_prod'] 
+                    }
+                }
+            ]
+        });
+
+        res.json({
+            msg: 'Lista de facturas eliminadas obtenida correctamente',
+            listaFacturaProveedorEliminadas: facturas
+        });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ msg: 'No se pudo obtener la lista de facturas eliminadas' });
+    }
+};
+
+
+// Reactivar facturas eliminadas
+const reactivarFacturaProveedor = async (req, res) => {
+    const { id } = req.params;
+
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        return res.status(403).json({ msg: 'No tiene permisos para esta acción' });
+    }
+
+    const t = await db.transaction();
+
+    try {
+        const factura = await FacturaProveedor.findByPk(id, {
+            include: { model: DetalleProveedor, as: 'detalles' },
+            transaction: t
+        });
+
+        if (!factura) {
+            await t.rollback();
+            return res.status(404).json({ msg: 'Factura no encontrada' });
+        }
+
+        if (factura.estado_fp !== false) {
+            await t.rollback();
+            return res.status(400).json({ msg: 'La factura no se encuentra eliminada' });
+        }
+
+        // 1. validar stock de todos los detalles antes de tocar nada
+        const errores = [];
+        const productosPorDetalle = [];
+
+        for (const detalle of factura.detalles) { // detalle = va contener todo el detalle de esa factura
+            const producto = await Producto.findByPk(detalle.producto_dp_id, { transaction: t });
+
+            if (!producto) {
+                errores.push(`El producto con id ${detalle.producto_dp_id} ya no existe, no se puede reactivar`);
+                continue;
+            }
+
+            if (producto.cantidad_prod < detalle.cantidad_dp_compra) {
+                errores.push(`No hay suficiente stock de "${producto.nombre_prod}" (disponible: ${producto.cantidad_prod}, requerido: ${detalle.cantidad_dp_compra})`);
+                continue;
+            }
+
+            productosPorDetalle.push({ producto, detalle });
+        }
+
+        // si hay un error cancelar la operacion
+        if (errores.length > 0) {
+            await t.rollback();
+            return res.status(400).json({
+                msg: 'No se puede reactivar la factura',
+                errores
+            });
+        }
+
+        // 2. descontar el stock, ya validado que alcanza para todos
+        for (const { producto, detalle } of productosPorDetalle) {
+            await producto.update({
+                cantidad_prod: producto.cantidad_prod - detalle.cantidad_dp_compra
+            }, { transaction: t });
+        }
+
+        // 3. reactivar la factura
+        await factura.update({ estado_fp: true }, { transaction: t });
+
+        await t.commit();
+
+        const facturaReactivada = await FacturaProveedor.findByPk(factura.id_fact_prov, {
+            include: [
+                { 
+                    model: Proveedor, 
+                    as: 'proveedor',
+                    attributes: ['nombre_prov', 'nit_prov', 'correo_prov']
+                },
+                { 
+                    model: Usuario, 
+                    as: 'usuario', 
+                    attributes: ['nombre_user', 'apellido_user'] 
+                },
+                { 
+                    model: Empresa, 
+                    as: 'empresa', 
+                    attributes: ['nombre_empresa'] 
+                },
+                {
+                    model: DetalleProveedor,
+                    as: 'detalles',
+                    include: { 
+                        model: Producto, 
+                        as: 'producto', 
+                        attributes: ['nombre_prod']                         
+                    }
+                }
+            ]
+        });
+
+        res.json({
+            msg: 'Factura reactivada correctamente',
+            facturaCompleta: facturaReactivada
+        });
+
+    } catch (error) {
+        await t.rollback();
+        console.log(error);
+        res.status(500).json({ msg: 'No se pudo reactivar la factura' });
+    }
+};
+
+
+// generar Facuras PDF
+const generarPDFFacturaProveedor = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const factura = await FacturaProveedor.findByPk(id, {
+            include: [
+                { model: Proveedor, as: 'proveedor', attributes: ['nombre_prov', 'nit_prov', 'correo_prov'] },
+                { model: Empresa, as: 'empresa', attributes: ['nombre_empresa', 'nit_empresa', 'cel_empresa'] },
+                {
+                    model: DetalleProveedor,
+                    as: 'detalles',
+                    include: { model: Producto, as: 'producto', attributes: ['nombre_prod'] },
+                    attributes: ['precio_dp_compra', 'cantidad_dp_compra']
+                }
+            ]
+        });
+
+        if (!factura) {
+            return res.status(404).json({ msg: 'Factura no encontrada' });
+        }
+
+        const total = calcularTotalFactura(factura.detalles);
+        const html = plantillaFacturaProveedor(factura, total);
+
+        const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+        const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+        await browser.close();
+
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename=factura_${factura.id_fact_prov}.pdf`
+        });
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ msg: 'No se pudo generar el PDF' });
+    }
+};
+
+
+
 
 // exportamos 
 export {
@@ -403,5 +661,9 @@ export {
     listaFacturaProveedor,
     obtenerFacturaProveedro,
     obtenerTotalFactura,
-    actualizarFacturaProveedor
-}
+    actualizarFacturaProveedor,
+    elimnarFacturaProveedor,
+    listaFacturaProveedorEliminadas,
+    reactivarFacturaProveedor,
+    generarPDFFacturaProveedor
+};
