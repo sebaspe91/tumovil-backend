@@ -3,6 +3,7 @@ import Usuario from "../models/Usuario.js";
 import generarJWT from "../helpers/generarJWT.js";
 import generarId from "../helpers/generarId.js";
 import emailRegistro from "../helpers/emailRegistro.js";
+import emailOlvidePassword from "../helpers/emailOlvidePassword.js";
 import e from "express";
 
 
@@ -161,6 +162,12 @@ const olvidePassword = async (req, res) => {
         });
 
         // seccion de enviar EMAIL
+        emailOlvidePassword({
+            correo_user,
+            nombre_user: usuarioExiste.nombre_user,
+            apellido_user: usuarioExiste.apellido_user,
+            token: usuarioExiste.token
+        });
 
         // respuesta json
         res.json({
