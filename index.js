@@ -1,6 +1,7 @@
 // Importaciones
 import express from "express";
 import dotenv from 'dotenv';
+import cors from 'cors';
 import usuarioRoutes from "./routes/usuarioRoutes.js";
 import marcaRoutes from "./routes/marcaRoutes.js";
 import productoRoutes from "./routes/productoRoutes.js";
@@ -27,6 +28,22 @@ db.authenticate()
     .then(() => console.log('Base de datos Conectada'))
     .catch(error => console.error(error));
 // 
+
+// perimios a URLS cors
+const dominiosPermitidos = [process.env.FRONTEND_URL];
+
+const corsOptions = {
+    origin: function(origin, callback) {
+        if (dominiosPermitidos.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('No permitido por CORS'));
+        }
+    }
+}
+
+app.use(cors(corsOptions));
+// ----- Fin cors -------------
 
 
 // redireccionar a una app en especifico

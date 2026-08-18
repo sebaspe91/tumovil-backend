@@ -2,6 +2,7 @@ import { where } from "sequelize";
 import Usuario from "../models/Usuario.js";
 import generarJWT from "../helpers/generarJWT.js";
 import generarId from "../helpers/generarId.js";
+import emailRegistro from "../helpers/emailRegistro.js";
 import e from "express";
 
 
@@ -38,6 +39,12 @@ const registrarUsuario = async (req, res) => {
         });
 
         // Enviar EMAIL
+        emailRegistro({
+            nombre_user,
+            apellido_user,
+            correo_user,
+            token: usuario.token
+        });
 
         // respuesta json
         res.json({
