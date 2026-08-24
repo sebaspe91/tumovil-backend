@@ -116,6 +116,7 @@ const autenticar = async (req, res) => {
         res.json({
             id_usuario: usuarioExiste.id_usuario,
             nombre_user: usuarioExiste.nombre_user,
+            apellido_user: usuarioExiste.apellido_user,
             correo_user: usuarioExiste.correo_user,
             tipo_user: usuarioExiste.tipo_user,
             token: generarJWT(usuarioExiste.id_usuario) // generamos el token
@@ -318,14 +319,14 @@ const actualizarPassword = async (req, res) => {
 
 // lista de usuarios
 const listaUsuarios = async (req, res) => {
-    const {id} = req.params;
+    // const {id} = req.params;
 
-    const usuarioExiste = await Usuario.findByPk(id);
+    // const usuarioExiste = await Usuario.findByPk(id);
 
-    if (!usuarioExiste) {
-        const error = new Error('Usuario no registrado');
-        return res.status(404).json({msg: error.message});
-    }
+    // if (!usuarioExiste) {
+    //     const error = new Error('Usuario no registrado');
+    //     return res.status(404).json({msg: error.message});
+    // }
 
     if (req.usuario.tipo_user !== 'ADMIN') {
         const error = new Error('No tiene permisos para esta accion');
@@ -334,12 +335,14 @@ const listaUsuarios = async (req, res) => {
 
     // si todo esta bien
     try {
-        const usuarios = await Usuario.findAll({ 
+        const usuarios = await Usuario.findAll({
             where: {
-                confirmar : true,
                 estado_user: true
             },
-            attributes: { exclude: ['password', 'estado_user', 'token'] } 
+            // ya no se excluye estado_user: Usuario.jsx lo necesita para
+            // decidir si muestra los botones de Editar/Eliminar o el de
+            // Activar
+            attributes: { exclude: ['password', 'token'] }
         });
 
         res.json({
@@ -386,10 +389,11 @@ const obtenerUsuario = async (req, res) => {
 const actualizarUsuario = async (req, res) => {
     try {
         const {id} = req.params;
-        const {nombre_user, apellido_user, cedula_user, correo_user, telefono_user, tipo_user, estado_user} = req.body;
+        
+        const {nombre_user, apellido_user, cedula_user, correo_user, telefono_user, password, tipo_user, estado_user} = req.body;
 
         const usuarioActual = await Usuario.findByPk(id);
-
+        
         // validar si es usuario admin
         if (req.usuario.tipo_user !== 'ADMIN') {
             const error = new Error('No tiene permisos para esta accion');
@@ -413,23 +417,36 @@ const actualizarUsuario = async (req, res) => {
                 return res.status(409).json({msg: error.message});
             }
         }
-
-        // Actualizar usuario
+        // Actualizar usuario.
+        // Ojo: nombre_user.toUpperCase() (sin comprobar antes que nombre_user
+        // exista) revienta con TypeError si el campo no vino en el body --
+        // el || nunca alcanza a rescatarlo porque el error ya se lanzo al
+        // evaluar el .toUpperCase(). Por eso se comprueba primero con un
+        // condicional y solo se transforma el valor si de verdad llego.
         const usuarioActualizado = await usuarioActual.update({
-            nombre_user : nombre_user.toUpperCase() || usuarioActual.nombre_user.toUpperCase(),
-            apellido_user : apellido_user.toUpperCase() || usuarioActual.apellido_user.toUpperCase(),
+            nombre_user : nombre_user ? nombre_user.toUpperCase() : usuarioActual.nombre_user,
+            apellido_user : apellido_user ? apellido_user.toUpperCase() : usuarioActual.apellido_user,
             cedula_user : cedula_user || usuarioActual.cedula_user,
-            correo_user : correo_user.toUpperCase() || usuarioActual.correo_user.toUpperCase(),
+            correo_user : correo_user ? correo_user.toUpperCase() : usuarioActual.correo_user,
             telefono_user : telefono_user || usuarioActual.telefono_user,
-            tipo_user : tipo_user.toUpperCase() || usuarioActual.tipo_user.toUpperCase(),
-            estado_user : estado_user || usuarioActual.estado_user
-        }); 
+            // tipo_user hoy no llega desde FormularioUsers.jsx (no tiene ese
+            // input todavia), asi que sin este chequeo tronaria siempre
+            tipo_user : tipo_user ? tipo_user.toUpperCase() : usuarioActual.tipo_user,
+            // estado_user es booleano: con || un false explicito quedaria
+            // ignorado (false es falsy), por eso aca se usa ?? en vez de ||
+            estado_user : estado_user ?? usuarioActual.estado_user,
+            // el password solo se toca si en verdad llego uno nuevo desde el
+            // formulario (recuerda que ahora se omite cuando no se quiere
+            // cambiar, ver FormularioUsers.jsx)
+            ...(password ? { password: password.trim() } : {})
+        });
 
         res.json({
             msg: "Usuario Actualizado",
             usuarioActualizado
         });
     } catch (error) {
+        console.log(error);
         const err = new Error('Erro al actualizar al usuario');
         return res.status(500).json({msg: err.message}); 
     }
@@ -438,6 +455,7 @@ const actualizarUsuario = async (req, res) => {
 
 // eliminar un usuario
 const eliminarUsuario = async (req, res) => {
+    console.log('Hola desde eliminar')
     try {
         const {tipo_user} = req.usuario;
         const {id} = req.params;
@@ -479,12 +497,15 @@ const listaUsuariosEliminados = async (req, res) => {
     }
 
     try {
-        const usuario = await Usuario.findAll({
-            where: {estado_user: 0}
+        const usuarios = await Usuario.findAll({
+            where: {estado_user: 0},
+            attributes: { exclude: ['password', 'token'] }
         });
 
+        // la llave se llama "usuarios" (plural) para que coincida con lo
+        // que lee el frontend en UsersProvider.jsx (data.usuarios)
         res.json({
-            usuario
+            usuarios
         });
     } catch (error) {
         console.log(error);
