@@ -178,6 +178,8 @@ const autenticar = async (req, res) => {
                 id_usuario: usuarioExiste.id_usuario,
                 nombre_user: usuarioExiste.nombre_user,
                 apellido_user: usuarioExiste.apellido_user,
+                cedula_user: usuarioExiste.cedula_user,
+                telefono_user: usuarioExiste.telefono_user,
                 correo_user: usuarioExiste.correo_user,
                 tipo_user: usuarioExiste.tipo_user,
                 token: generarJWT(usuarioExiste.id_usuario) // generamos el token
@@ -316,7 +318,7 @@ const nuevoPassword = async (req, res) => {
 const actualizarPerfil = async (req, res) => {
     const {id} = req.params;
     const {nombre_user, apellido_user, cedula_user, correo_user, telefono_user} = req.body;
-
+    
     // existe el usuario del id
     const usuario = await Usuario.findByPk(id);
 
@@ -350,7 +352,12 @@ const actualizarPerfil = async (req, res) => {
             telefono_user : telefono_user || usuario.telefono_user
         });
 
-        res.json(usuarioActualizado);
+        // igual que en registrarUsuario: no mandamos password ni token de
+        // vuelta al frontend -- esta respuesta la va a guardar el frontend
+        // directo en "auth" (para que el nombre se actualice en la pantalla
+        // sin recargar), asi que no puede traer datos sensibles.
+        const { password: _password, token: _token, ...usuarioSinPassword } = usuarioActualizado.toJSON();
+        res.json(usuarioSinPassword);
 
     } catch (error) {
         console.log(error);

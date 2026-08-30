@@ -1,4 +1,26 @@
+import { Op } from "sequelize";
 import Cliente from "../models/Cliente.js";
+import { leerPaginacion } from "../helpers/paginar.js";
+
+
+
+const armarWhereUsuarios = (estado_cli, busqueda) => {
+    const where = { estado_cli };
+
+    if (busqueda && busqueda.trim() !== '') {
+        const texto = busqueda.trim();
+        where[Op.or] = [
+            { nombre_cliente: { [Op.like]: `%${texto.toUpperCase()}%` } },
+            { apellido_cliente: { [Op.like]: `%${texto.toUpperCase()}%` } },
+            { cedula_cliente: { [Op.like]: `%${texto}%` } },
+            { correo_cliente: { [Op.like]: `%${texto.toUpperCase()}%` } },
+            { telefono_cliente: { [Op.like]: `%${texto.toUpperCase()}%` } }
+        ];
+    }
+
+    return where;
+};
+
 
 // registrar cliente
 const registrarCliente = async (req, res) => {
@@ -24,7 +46,8 @@ const registrarCliente = async (req, res) => {
             nombre_cliente: nombre_cliente.toUpperCase().trim(),
             apellido_cliente: apellido_cliente.toUpperCase().trim(),
             cedula_cliente: cedula_cliente.trim(),
-            correo_cliente: correo_cliente.toUpperCase().trim()
+            correo_cliente: correo_cliente.toUpperCase().trim(),
+            telefono_cliente: telefono_cliente.toUpperCase().trim() || 'S/N',
         });
 
         // respuesta json
@@ -44,12 +67,25 @@ const registrarCliente = async (req, res) => {
 const listaCliente = async (req, res) => {
     try {
         // listar 
-        const clientes = await Cliente.findAll({
-            where: {estado_cli: true}
+        const { pagina, limite, offset } = leerPaginacion(req.query);
+        const where = armarWhereUsuarios(true, req.query.busqueda);
+
+        const { count, rows: clientes } = await Cliente.findAndCountAll({
+            where,
+            limit: limite,
+            offset,
+            order: [['id_cliente', 'DESC']]
         });
 
         res.json({
-            clientes
+            msg: 'Lista de Clientes',
+            clientes,
+            paginacion: {
+                total: count,
+                totalPaginas: Math.max(1, Math.ceil(count / limite)),
+                paginaActual: pagina,
+                limite
+            }
         });
     } catch (error) {
         console.log(error);
@@ -165,12 +201,25 @@ const listaClientesEliminados = async (req, res) => {
     }
 
     try {
-        const clientes = await Cliente.findAll({
-            where: {estado_cli: 0}
+        const { pagina, limite, offset } = leerPaginacion(req.query);
+        const where = armarWhereUsuarios(false, req.query.busqueda);
+
+        const { count, rows: clientes } = await Cliente.findAndCountAll({
+            where,
+            limit: limite,
+            offset,
+            order: [['id_cliente', 'DESC']]
         });
 
         res.json({
-            clientes
+            msg: 'Lista de Clientes',
+            clientes,
+            paginacion: {
+                total: count,
+                totalPaginas: Math.max(1, Math.ceil(count / limite)),
+                paginaActual: pagina,
+                limite
+            }
         });
     } catch (error) {
         console.log(error);
