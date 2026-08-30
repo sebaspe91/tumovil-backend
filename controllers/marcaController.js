@@ -105,10 +105,12 @@ const actualizarMarca = async (req, res) => {
             }
         }
 
-        //  todo bien 
+        //  todo bien
+        // primero comprobamos que el campo llego antes de llamar
+        // .toUpperCase() sobre el (igual que en actualizarUsuario)
         const actualizarMarca = await marca.update({
-            nombre_marca: nombre_marca.toUpperCase() || marca.nombre_marca.toUpperCase(),
-            codigo_marca: codigo_marca.toUpperCase() || marca.codigo_marca.toUpperCase()
+            nombre_marca: nombre_marca ? nombre_marca.toUpperCase() : marca.nombre_marca,
+            codigo_marca: codigo_marca ? codigo_marca.toUpperCase() : marca.codigo_marca
         });
 
         res.json({
@@ -132,13 +134,13 @@ const eliminarMarca = async (req, res) => {
 
         if (!marca) {
             const error = new Error("La marca no existe");
-            return res.status(403).json({msg: error.message});
+            return res.status(404).json({msg: error.message});
         }
 
         // validar si es marca admin
         if (req.usuario.tipo_user !== 'ADMIN') {
             const error = new Error('No tiene permisos para esta accion');
-            return res.status(404).json({msg: error.message});
+            return res.status(403).json({msg: error.message});
         }
 
         // eliminar marca
@@ -157,6 +159,12 @@ const eliminarMarca = async (req, res) => {
 
 // Lista marcas eliminados
 const listaMarcasEliminados = async (req, res) => {
+    // validar que sea admin (igual que listaCategoriasEliminadas)
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(403).json({msg: error.message});
+    }
+
     try {
         const marca = await Marca.findAll({
             where: {estado_marca: 0}
@@ -175,6 +183,12 @@ const listaMarcasEliminados = async (req, res) => {
 
 // activar
 const activarMarca = async (req, res) => {
+
+    // validar que sea admin (igual que activarCategoria)
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(403).json({msg: error.message});
+    }
 
     try {
         const {id} = req.params;

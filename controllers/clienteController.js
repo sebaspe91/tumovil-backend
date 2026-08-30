@@ -102,12 +102,14 @@ const actualizarCliente = async (req, res) => {
             }
         }
 
-        //  todo bien 
+        //  todo bien
+        // primero comprobamos que el campo llego antes de llamar
+        // .toUpperCase()/.trim() sobre el (igual que en actualizarUsuario)
         const actualizarCliente = await cliente.update({
-            nombre_cliente: nombre_cliente.toUpperCase().trim() || cliente.nombre_cliente.toUpperCase().trim(),
-            apellido_cliente: apellido_cliente.toUpperCase().trim() || cliente.apellido_cliente.toUpperCase().trim(),
-            cedula_cliente: cedula_cliente.trim() || cliente.cedula_cliente.trim(),
-            correo_cliente: correo_cliente.toUpperCase().trim() || cliente.correo_cliente.toUpperCase().trim()
+            nombre_cliente: nombre_cliente ? nombre_cliente.toUpperCase().trim() : cliente.nombre_cliente,
+            apellido_cliente: apellido_cliente ? apellido_cliente.toUpperCase().trim() : cliente.apellido_cliente,
+            cedula_cliente: cedula_cliente ? cedula_cliente.trim() : cliente.cedula_cliente,
+            correo_cliente: correo_cliente ? correo_cliente.toUpperCase().trim() : cliente.correo_cliente
         });
 
         res.json({
@@ -156,6 +158,12 @@ const eliminarCliente = async (req, res) => {
 
 // Lista clientes eliminados
 const listaClientesEliminados = async (req, res) => {
+    // validar que sea admin (igual que listaCategoriasEliminadas)
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(403).json({msg: error.message});
+    }
+
     try {
         const clientes = await Cliente.findAll({
             where: {estado_cli: 0}
@@ -175,11 +183,17 @@ const listaClientesEliminados = async (req, res) => {
 // activar
 const activarCliente = async (req, res) => {
 
+    // validar que sea admin (igual que activarCategoria)
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(403).json({msg: error.message});
+    }
+
     try {
         const {id} = req.params;
 
         const cliente = await Cliente.findByPk(id);
-        
+
         if (!cliente) {
             const error = new Error('El cliente no existe');
             return res.status(404).json({msg: error.message});

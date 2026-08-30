@@ -216,6 +216,12 @@ const listaProductosEliminados = async (req, res) => {
 // activar
 const activarProducto = async (req, res) => {
 
+    // validar que sea admin (igual que activarCategoria)
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(403).json({msg: error.message});
+    }
+
     try {
         const {id} = req.params;
 

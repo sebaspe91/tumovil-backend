@@ -102,12 +102,14 @@ const actualizarProveedor = async (req, res) => {
             }
         }
 
-        //  todo bien 
+        //  todo bien
+        // primero comprobamos que el campo llego antes de llamar
+        // .toUpperCase()/.trim() sobre el (igual que en actualizarUsuario)
         const actualizarProveedor = await proveedor.update({
-            nombre_prov: nombre_prov.toUpperCase().trim() || proveedor.nombre_prov.toUpperCase().trim(),
-            nit_prov: nit_prov.trim() || proveedor.nit_prov.trim(),
-            correo_prov: correo_prov.toUpperCase().trim() || proveedor.correo_prov.toUpperCase().trim(),
-            telefono_prov: telefono_prov.trim() || proveedor.telefono_prov.trim(),
+            nombre_prov: nombre_prov ? nombre_prov.toUpperCase().trim() : proveedor.nombre_prov,
+            nit_prov: nit_prov ? nit_prov.trim() : proveedor.nit_prov,
+            correo_prov: correo_prov ? correo_prov.toUpperCase().trim() : proveedor.correo_prov,
+            telefono_prov: telefono_prov ? telefono_prov.trim() : proveedor.telefono_prov,
             estado_prov: estado_prov !== undefined ? Boolean(Number(estado_prov)) : proveedor.estado_prov
         });
 
@@ -157,6 +159,12 @@ const eliminarProveedor = async (req, res) => {
 
 // Lista proveedores eliminados
 const listaProveedoresEliminados = async (req, res) => {
+    // validar que sea admin (igual que listaCategoriasEliminadas)
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(403).json({msg: error.message});
+    }
+
     try {
         const proveedores = await Proveedor.findAll({
             where: {estado_prov: 0}
@@ -176,11 +184,17 @@ const listaProveedoresEliminados = async (req, res) => {
 // activar
 const activarProveedor = async (req, res) => {
 
+    // validar que sea admin (igual que activarCategoria)
+    if (req.usuario.tipo_user !== 'ADMIN') {
+        const error = new Error('No tiene permisos para esta accion');
+        return res.status(403).json({msg: error.message});
+    }
+
     try {
         const {id} = req.params;
 
         const proveedor = await Proveedor.findByPk(id);
-        
+
         if (!proveedor) {
             const error = new Error('El proveedor no existe');
             return res.status(404).json({msg: error.message});

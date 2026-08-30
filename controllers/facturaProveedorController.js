@@ -17,11 +17,53 @@ const calcularTotalFactura = (detalles) => {
     }, 0);
 };
 
+// El precio de compra NO tiene tope: se compra al precio que pida el
+// proveedor, aunque suba, porque si el producto se necesita hay que
+// comprarlo igual. Lo que sí se garantiza es que, con ese nuevo costo,
+// el producto le siga dejando al menos esta ganancia al venderse -- si
+// no le alcanza, se sube el precio de venta automáticamente.
+const GANANCIA_MINIMA = 5000;
+
+// valida que el precio de compra de un item de la factura venga informado
+// y sea un numero valido mayor a cero. Devuelve el numero ya convertido,
+// o null si no es valido (para que el controller responda el error).
+const validarPrecioCompra = (precio_compra) => {
+    if (precio_compra === undefined || precio_compra === null || precio_compra === '') {
+        return null;
+    }
+    const precio = parseFloat(precio_compra);
+    if (isNaN(precio) || !isFinite(precio) || precio <= 0) {
+        return null;
+    }
+    return precio;
+};
+
+// valida que la cantidad comprada de un item venga informada y sea un
+// entero mayor a cero. Devuelve el numero ya convertido, o null si no es
+// valida.
+const validarCantidadCompra = (cantidad_dp_compra) => {
+    if (cantidad_dp_compra === undefined || cantidad_dp_compra === null || cantidad_dp_compra === '') {
+        return null;
+    }
+    const cantidad = Number(cantidad_dp_compra);
+    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+        return null;
+    }
+    return cantidad;
+};
+
+// si con el nuevo precio de compra ya no queda la ganancia minima al
+// vender el producto a su precio_venta actual, sube el precio_venta lo
+// justo para volver a dejarla
+const calcularPrecioVentaConGanancia = (precioVentaActual, precioCompra) => {
+    const precioVentaMinimo = precioCompra + GANANCIA_MINIMA;
+    return precioVentaActual < precioVentaMinimo ? precioVentaMinimo : precioVentaActual;
+};
+
 
 // enpont
 const registrarFacturaProveedor = async (req, res) => {
     // elementos enviados por el usuario
-    console.log(req.body)
     const {proveedor_id, empresa_fp_id, productos} = req.body;
 
     if (!proveedor_id || !empresa_fp_id || !Array.isArray(productos) || productos.length === 0) {
@@ -59,9 +101,23 @@ const registrarFacturaProveedor = async (req, res) => {
 
         // con el array productos que mando el usuario validamos y ejecutamos
         for (const item of productos) {
-            
+
             // Extraemos todo los datos del array productos pro seccion
             const {producto_dp_id, cantidad_dp_compra, precio_compra} = item;
+
+            // el precio de compra es obligatorio: es lo que en verdad se
+            // pacto con el proveedor en esta factura, no se puede inventar
+            const precioCompraValido = validarPrecioCompra(precio_compra);
+            if (precioCompraValido === null) {
+                await t.rollback();
+                return res.status(400).json({ msg: `Debe indicar un precio de compra valido para el producto con id ${producto_dp_id}` });
+            }
+
+            const cantidadValida = validarCantidadCompra(cantidad_dp_compra);
+            if (cantidadValida === null) {
+                await t.rollback();
+                return res.status(400).json({ msg: `La cantidad comprada del producto con id ${producto_dp_id} debe ser un numero entero mayor a cero` });
+            }
 
             // consultamos el producto para validar
             const producto = await Producto.findByPk(producto_dp_id, {transaction:t});
@@ -76,16 +132,18 @@ const registrarFacturaProveedor = async (req, res) => {
             const detalle = await DetalleProveedor.create({
                 producto_dp_id,
                 fact_prov_id: factura.id_fact_prov,
-                cantidad_dp_compra,
-                precio_dp_compra: precio_compra
+                cantidad_dp_compra: cantidadValida,
+                precio_dp_compra: precioCompraValido
             }, {transaction:t});
 
             // guardamos los detalles en el array para una suma total
             detallesCreados.push(detalle);
 
-            // aumentar el almacen
+            // aumentar el almacen y, si con este costo ya no queda la
+            // ganancia minima, subir el precio de venta para garantizarla
             await producto.update({
-                cantidad_prod: producto.cantidad_prod + cantidad_dp_compra
+                cantidad_prod: producto.cantidad_prod + cantidadValida,
+                precio_venta: calcularPrecioVentaConGanancia(producto.precio_venta, precioCompraValido)
             }, {transaction:t});
         }
 
@@ -326,7 +384,23 @@ const actualizarFacturaProveedor = async (req, res) => {
         const detallesCreados = [];
 
         for (const item of productos) {
-            const { producto_dp_id, cantidad_dp_compra } = item;
+            const { producto_dp_id, cantidad_dp_compra, precio_compra } = item;
+
+            // mismo precio de compra obligatorio que en registrarFacturaProveedor
+            // (antes aca se ignoraba lo que mandaba el body y se usaba
+            // siempre producto.precio_compra, lo cual no dejaba corregir el
+            // precio de una factura ya creada)
+            const precioCompraValido = validarPrecioCompra(precio_compra);
+            if (precioCompraValido === null) {
+                await t.rollback();
+                return res.status(400).json({ msg: `Debe indicar un precio de compra valido para el producto con id ${producto_dp_id}` });
+            }
+
+            const cantidadValida = validarCantidadCompra(cantidad_dp_compra);
+            if (cantidadValida === null) {
+                await t.rollback();
+                return res.status(400).json({ msg: `La cantidad comprada del producto con id ${producto_dp_id} debe ser un numero entero mayor a cero` });
+            }
 
             const producto = await Producto.findByPk(producto_dp_id, { transaction: t });
 
@@ -339,14 +413,15 @@ const actualizarFacturaProveedor = async (req, res) => {
             const detalle = await DetalleProveedor.create({
                 producto_dp_id,
                 fact_prov_id: factura.id_fact_prov,
-                cantidad_dp_compra,
-                precio_dp_compra: producto.precio_compra
+                cantidad_dp_compra: cantidadValida,
+                precio_dp_compra: precioCompraValido
             }, { transaction: t });
 
             detallesCreados.push(detalle);
 
             await producto.update({
-                cantidad_prod: producto.cantidad_prod + cantidad_dp_compra
+                cantidad_prod: producto.cantidad_prod + cantidadValida,
+                precio_venta: calcularPrecioVentaConGanancia(producto.precio_venta, precioCompraValido)
             }, { transaction: t });
         }
 

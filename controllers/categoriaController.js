@@ -108,10 +108,13 @@ const actualizarCategoria = async (req, res) => {
             }
         }
 
-        //  todo bien 
+        //  todo bien
+        // primero comprobamos que el campo llego antes de llamar
+        // .toUpperCase() sobre el, para no reventar con TypeError cuando el
+        // frontend no manda ese campo (igual que en actualizarUsuario)
         const actualizarCategoria = await categoria.update({
-            nombre_categoria: nombre_categoria.toUpperCase().trim() || categoria.nombre_categoria.toUpperCase().trim(),
-            codigo_categoria: codigo_categoria.toUpperCase().trim() || categoria.codigo_categoria.toUpperCase().trim(),
+            nombre_categoria: nombre_categoria ? nombre_categoria.toUpperCase().trim() : categoria.nombre_categoria,
+            codigo_categoria: codigo_categoria ? codigo_categoria.toUpperCase().trim() : categoria.codigo_categoria,
             estado_categoria: estado_categoria !== undefined ? Boolean(Number(estado_categoria)) : categoria.estado_categoria
         });
 

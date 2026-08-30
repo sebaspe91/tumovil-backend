@@ -116,8 +116,12 @@ const actualizarEmpresa = async (req, res) => {
         }
 
         // Valorar que el codigo ingresado no se repita
+        // Ojo: era "empresa.findOne" (la instancia que ya trajimos con
+        // findByPk), pero las instancias de Sequelize no tienen findOne --
+        // ese metodo es del modelo "Empresa" (mayuscula). Con la instancia
+        // esto reventaba con TypeError cada vez que se cambiaba el NIT.
         if (empresa.nit_empresa !== nit_empresa) {
-            const empresaExiste = await empresa.findOne({where: {nit_empresa}});
+            const empresaExiste = await Empresa.findOne({where: {nit_empresa}});
 
             // validar que el nit no sea duplicado
             if (empresaExiste) {
