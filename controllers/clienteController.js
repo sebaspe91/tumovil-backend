@@ -145,7 +145,8 @@ const actualizarCliente = async (req, res) => {
             nombre_cliente: nombre_cliente ? nombre_cliente.toUpperCase().trim() : cliente.nombre_cliente,
             apellido_cliente: apellido_cliente ? apellido_cliente.toUpperCase().trim() : cliente.apellido_cliente,
             cedula_cliente: cedula_cliente ? cedula_cliente.trim() : cliente.cedula_cliente,
-            correo_cliente: correo_cliente ? correo_cliente.toUpperCase().trim() : cliente.correo_cliente
+            correo_cliente: correo_cliente ? correo_cliente.toUpperCase().trim() : cliente.correo_cliente,
+            telefono_cliente: telefono_cliente ? telefono_cliente.toUpperCase().trim() : cliente.telefono_cliente,
         });
 
         res.json({

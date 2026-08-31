@@ -17,8 +17,26 @@ import './associations/index.js'; // Se hace para que se ejecuten las relaciones
 // inicializamos
 const app = express();
 
+// Desactivamos el ETag: por defecto Express calcula un "hash" del contenido
+// de cada respuesta y si el navegador vuelve a pedir la misma URL, contesta
+// "304 Not Modified" (sin body) si ese hash no cambio. El problema es que
+// esto se combina con el cache HTTP del navegador y en una API donde los
+// datos cambian todo el tiempo (crear/eliminar/activar) puede terminar
+// mostrando datos viejos hasta que se hace un refresh fuerte. Como esta API
+// siempre debe reflejar el estado actual de la base de datos, no queremos
+// que nada quede cacheado.
+app.disable('etag');
+
 // Habilitar JSON para express
 app.use(express.json());
+
+// Le decimos al navegador explicitamente que NO guarde en cache ninguna
+// respuesta de la API (esto refuerza lo de arriba: sin esto, el navegador
+// podria decidir cachear igual por su cuenta en ciertos casos).
+app.use((req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+});
 
 // para utilizar .env
 dotenv.config();
