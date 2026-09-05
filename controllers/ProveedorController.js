@@ -1,4 +1,23 @@
+import {Op} from "sequelize";
 import Proveedor from "../models/Proveedor.js";
+import { leerPaginacion } from "../helpers/paginar.js";
+
+const armarWhereProveedor = (estado_prov, busqueda) => {
+    const where = {estado_prov}
+
+    if (busqueda && busqueda.trim() !== '') {
+        const texto = busqueda.trim();
+        where[Op.or] = [
+            {nombre_prov: {[Op.like]: `%${texto.toUpperCase()}%`}},
+            {nit_prov: {[Op.like]: `%${texto.toUpperCase()}%`}},
+            {correo_prov: {[Op.like]: `%${texto.toUpperCase()}%`}},
+            {telefono_prov: {[Op.like]: `%${texto.toUpperCase()}%`}},
+            {cuenta_prov: {[Op.like]: `%${texto.toUpperCase()}%`}},
+        ];
+    }
+
+    return where;
+}
 
 // registrar cliente
 const registrarProveedor = async (req, res) => {
@@ -42,14 +61,28 @@ const registrarProveedor = async (req, res) => {
 
 // listar proveedor
 const listaProveedor = async (req, res) => {
+    console.log('Desde lista proveedor')
     try {
         // listar 
-        const proveedores = await Proveedor.findAll({
-            where: {estado_prov: true}
+        const {pagina, limite, offset} = leerPaginacion(req.query);
+        const where = armarWhereProveedor(true, req.query.busqueda);
+
+        const {count, rows: proveedores} = await Proveedor.findAndCountAll({
+            where,
+            limit: limite,
+            offset,
+            order: [['id_proveedor', 'DESC']]
         });
 
         res.json({
-            proveedores
+            msg: 'Lista De Proveedores',
+            proveedores,
+            paginacion: {
+                total: count,
+                totalPaginas: Math.max(1, Math.ceil(count / limite)),
+                paginaActual: pagina,
+                limite
+            }
         });
     } catch (error) {
         console.log(error);
@@ -166,12 +199,26 @@ const listaProveedoresEliminados = async (req, res) => {
     }
 
     try {
-        const proveedores = await Proveedor.findAll({
-            where: {estado_prov: 0}
+        // preparar paginacion y el buscador
+        const {pagina, limite, offset} = leerPaginacion(req.query);
+        const where = armarWhereProveedor(false, req.query.busqueda);
+        
+        const {count, rows: proveedores} = await Proveedor.findAndCountAll({
+            where,
+            limit: limite,
+            offset,
+            order: [['id_proveedor', 'DESC']]
         });
 
         res.json({
-            proveedores
+            msg: 'Lista de Proveedores',
+            proveedores,
+            paginacion: {
+                total: count,
+                totalPaginas: Math.max(1, Math.ceil(count / limite)),
+                paginaActual: pagina,
+                limite
+            }
         });
     } catch (error) {
         console.log(error);

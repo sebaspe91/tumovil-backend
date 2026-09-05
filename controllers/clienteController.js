@@ -196,10 +196,10 @@ const eliminarCliente = async (req, res) => {
 // Lista clientes eliminados
 const listaClientesEliminados = async (req, res) => {
     // validar que sea admin (igual que listaCategoriasEliminadas)
-    if (req.usuario.tipo_user !== 'ADMIN') {
-        const error = new Error('No tiene permisos para esta accion');
-        return res.status(403).json({msg: error.message});
-    }
+    // if (req.usuario.tipo_user !== 'ADMIN') {
+    //     const error = new Error('No tiene permisos para esta accion');
+    //     return res.status(403).json({msg: error.message});
+    // }
 
     try {
         const { pagina, limite, offset } = leerPaginacion(req.query);
