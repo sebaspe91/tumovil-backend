@@ -21,7 +21,7 @@ const armarWhereProveedor = (estado_prov, busqueda) => {
 
 // registrar cliente
 const registrarProveedor = async (req, res) => {
-    const {nombre_prov, nit_prov, correo_prov, telefono_prov} = req.body;
+    const {nombre_prov, nit_prov, correo_prov, telefono_prov, cuenta_prov} = req.body;
 
     // validar campos obligatorios
     if ([nombre_prov, nit_prov, correo_prov, telefono_prov].includes('')) {
@@ -43,7 +43,8 @@ const registrarProveedor = async (req, res) => {
             nombre_prov: nombre_prov.toUpperCase().trim(),
             nit_prov: nit_prov.trim(),
             correo_prov: correo_prov.toUpperCase().trim(),
-            telefono_prov: telefono_prov.trim()
+            telefono_prov: telefono_prov.trim(),
+            cuenta_prov: cuenta_prov.trim()
         });
 
         // respuesta json
@@ -115,7 +116,7 @@ const obtenerProveedor = async (req, res) => {
 const actualizarProveedor = async (req, res) => {
     try {
         const {id} = req.params;
-        const {nombre_prov, nit_prov, correo_prov, telefono_prov, estado_prov} = req.body;
+        const {nombre_prov, nit_prov, correo_prov, telefono_prov, cuenta_prov, estado_prov} = req.body;
 
         const proveedor = await Proveedor.findByPk(id);
         
@@ -143,6 +144,7 @@ const actualizarProveedor = async (req, res) => {
             nit_prov: nit_prov ? nit_prov.trim() : proveedor.nit_prov,
             correo_prov: correo_prov ? correo_prov.toUpperCase().trim() : proveedor.correo_prov,
             telefono_prov: telefono_prov ? telefono_prov.trim() : proveedor.telefono_prov,
+            cuenta_prov: cuenta_prov ? cuenta_prov.trim() : proveedor.cuenta_prov,
             estado_prov: estado_prov !== undefined ? Boolean(Number(estado_prov)) : proveedor.estado_prov
         });
 
