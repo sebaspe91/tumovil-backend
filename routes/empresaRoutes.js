@@ -1,12 +1,7 @@
 import express from "express";
 import {
-    registrarEmpresa,
-    listaEmpresas,
     obtenerEmpresa,
-    actualizarEmpresa,
-    eliminarEmpresa,
-    listaEmpresasEliminados,
-    activarEmpresa
+    actualizarEmpresa
 } from "../controllers/empresaController.js";
 import checkAuth from "../middleware/authMiddleware.js";
 
@@ -14,22 +9,13 @@ import checkAuth from "../middleware/authMiddleware.js";
 // instanciar
 const empresaRoutes = express.Router();
 
-// privados
+// La empresa es una unica fila fija en la base de datos: aca solo se
+// puede consultar (GET) y actualizar (PUT). No existe crear, eliminar
+// ni activar/desactivar -- esas rutas se quitaron a proposito para que
+// nadie pueda usarlas ni llamando la API directo (Postman, curl, etc).
 empresaRoutes.route('/')
-    .post(checkAuth, registrarEmpresa)
-    .get(checkAuth, listaEmpresas);
-// fin
-
-empresaRoutes.get('/eliminados', checkAuth, listaEmpresasEliminados);
-empresaRoutes.put('/eliminar/:id', checkAuth, eliminarEmpresa);
-
-// empresa
-empresaRoutes.route('/:id')
     .get(checkAuth, obtenerEmpresa)
-    .put(checkAuth, actualizarEmpresa)
-    .patch(checkAuth, activarEmpresa)
-// fin
-
+    .put(checkAuth, actualizarEmpresa);
 
 // exportar
 export default empresaRoutes;
