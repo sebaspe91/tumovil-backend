@@ -1,4 +1,7 @@
 import Empresa from "../models/Empresa.js";
+import fs from "fs";
+import path from "path";
+import { carpetaLogos } from "../middleware/uploadEmpresa.js";
 
 // La empresa es una fila UNICA en la base de datos (se crea directo ahi,
 // nunca desde la app). Por eso este controlador ya no tiene "crear",
@@ -69,11 +72,31 @@ const actualizarEmpresa = async (req, res) => {
             }
         }
 
+        // Si llego un archivo nuevo (req.file lo pone "uploadEmpresa",
+        // el middleware de multer), guardamos su nombre en logo_empresa
+        // y borramos del disco el logo anterior para no dejar basura.
+        let logo_empresa = empresa.logo_empresa;
+
+        if (req.file) {
+            if (empresa.logo_empresa) {
+                const rutaLogoAnterior = path.join(carpetaLogos, empresa.logo_empresa);
+
+                // fs.existsSync evita que truene si el archivo ya no
+                // estaba (por ejemplo si alguien lo borro a mano)
+                if (fs.existsSync(rutaLogoAnterior)) {
+                    fs.unlinkSync(rutaLogoAnterior);
+                }
+            }
+
+            logo_empresa = req.file.filename;
+        }
+
         const empresaActualizada = await empresa.update({
             nombre_empresa: nombre_empresa ? nombre_empresa.toUpperCase().trim() : empresa.nombre_empresa,
             nit_empresa: nit_empresa ? nit_empresa.trim() : empresa.nit_empresa,
             correo_empresa: correo_empresa ? correo_empresa.toUpperCase().trim() : empresa.correo_empresa,
-            cel_empresa: cel_empresa ? cel_empresa.trim() : empresa.cel_empresa
+            cel_empresa: cel_empresa ? cel_empresa.trim() : empresa.cel_empresa,
+            logo_empresa
         });
 
         res.json({

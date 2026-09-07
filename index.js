@@ -2,6 +2,8 @@
 import express from "express";
 import dotenv from 'dotenv';
 import cors from 'cors';
+import path from "path";
+import { fileURLToPath } from "url";
 import usuarioRoutes from "./routes/usuarioRoutes.js";
 import marcaRoutes from "./routes/marcaRoutes.js";
 import productoRoutes from "./routes/productoRoutes.js";
@@ -29,6 +31,16 @@ app.disable('etag');
 
 // Habilitar JSON para express
 app.use(express.json());
+
+// "__dirname" no existe en modulos ES ("type": "module"), se arma a
+// mano igual que en middleware/uploadEmpresa.js
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Sirve la carpeta backend/public como archivos estaticos -- esto es lo
+// que hace que una imagen guardada en public/uploads/empresa/logo.jpg
+// se pueda pedir desde el navegador como http://localhost:4000/uploads/empresa/logo.jpg
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 // Le decimos al navegador explicitamente que NO guarde en cache ninguna
 // respuesta de la API (esto refuerza lo de arriba: sin esto, el navegador
