@@ -1,6 +1,6 @@
 import Empresa from "../models/Empresa.js";
-import fs from "fs";
-import path from "path";
+import fs from "fs"; // crea, elimina, o lee archivos o carpetas del disco
+import path from "path"; // maneja URLS y las crea
 import { carpetaLogos } from "../middleware/uploadEmpresa.js";
 
 // La empresa es una fila UNICA en la base de datos (se crea directo ahi,
@@ -77,17 +77,22 @@ const actualizarEmpresa = async (req, res) => {
         // y borramos del disco el logo anterior para no dejar basura.
         let logo_empresa = empresa.logo_empresa;
 
+        // Pregunta si llego un archivo del frontEnd
         if (req.file) {
+            // Si la empresa tiene ya un logo guardado en la DB
             if (empresa.logo_empresa) {
+                // Se arma la ruta del logo anterior para borrarlo del disco duro
                 const rutaLogoAnterior = path.join(carpetaLogos, empresa.logo_empresa);
 
                 // fs.existsSync evita que truene si el archivo ya no
                 // estaba (por ejemplo si alguien lo borro a mano)
                 if (fs.existsSync(rutaLogoAnterior)) {
-                    fs.unlinkSync(rutaLogoAnterior);
+                    // borra el archivo del disco duro
+                    fs.unlinkSync(rutaLogoAnterior); // Sync = es una operacion que espera a terminar antes de seguir
                 }
             }
 
+            // se actualiza el nuevo nombre o se deja el mismo
             logo_empresa = req.file.filename;
         }
 

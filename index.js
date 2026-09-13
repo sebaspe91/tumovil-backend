@@ -2,8 +2,8 @@
 import express from "express";
 import dotenv from 'dotenv';
 import cors from 'cors';
-import path from "path";
-import { fileURLToPath } from "url";
+import path from "path"; // manejo de URL
+import { fileURLToPath } from "url"; // tranforma la URL generada por una comprensible para el navegador segun el sistema operativo
 import usuarioRoutes from "./routes/usuarioRoutes.js";
 import marcaRoutes from "./routes/marcaRoutes.js";
 import productoRoutes from "./routes/productoRoutes.js";
@@ -27,20 +27,24 @@ const app = express();
 // mostrando datos viejos hasta que se hace un refresh fuerte. Como esta API
 // siempre debe reflejar el estado actual de la base de datos, no queremos
 // que nada quede cacheado.
-app.disable('etag');
+app.disable('etag'); // DESABILIDTAR EL CACHE
 
 // Habilitar JSON para express
 app.use(express.json());
 
 // "__dirname" no existe en modulos ES ("type": "module"), se arma a
 // mano igual que en middleware/uploadEmpresa.js
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename = fileURLToPath(import.meta.url); // URL del archivo actual "index.js"
+const __dirname = path.dirname(__filename); // URL de la carpeta donde esta
 
 // Sirve la carpeta backend/public como archivos estaticos -- esto es lo
 // que hace que una imagen guardada en public/uploads/empresa/logo.jpg
 // se pueda pedir desde el navegador como http://localhost:4000/uploads/empresa/logo.jpg
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads'))); // Se crea la carpeta completa para que pueda crear otras subCarpetas
+
+// express.static( .. ) => crea un middleware especial cuyo único trabajo es "si la URL pedida coincide con un archivo que existe adentro de esta carpeta, mándalo tal cual, y ya".
+
+// app.use('/uploads', ...) ==> el primer argumento ('/uploads') es el "prefijo" en la URL. Esto crea la traducción entre lo que pide el navegador y dónde buscarlo en el disco => Busca en disco:backend/public/uploads/empresa/logo-123.jpg
 
 // Le decimos al navegador explicitamente que NO guarde en cache ninguna
 // respuesta de la API (esto refuerza lo de arriba: sin esto, el navegador

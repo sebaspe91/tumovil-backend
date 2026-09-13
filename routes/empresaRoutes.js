@@ -22,6 +22,8 @@ const empresaRoutes = express.Router();
 empresaRoutes.route('/')
     .get(checkAuth, obtenerEmpresa)
     .put(checkAuth, uploadEmpresa.single('logo'), actualizarEmpresa);
+    // uploadEmpresa.single('logo') => Es pera un solo archivo y va a venir en el campo llamado "logo" del formulario
+// -- fin --
 
 // exportar
 export default empresaRoutes;
