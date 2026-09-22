@@ -1,4 +1,19 @@
+import {Op} from "sequelize";
 import Marca from "../models/Marca.js";
+import { leerPaginacion } from "../helpers/paginar.js";
+
+const armarWhereMarca = (estado_marca, busqueda) => {
+    const where = {estado_marca};
+
+    if (busqueda && busqueda.trim() !== '') {
+        const texto = busqueda.trim();
+        where[Op.or] = [
+            { nombre_marca: {[Op.like]: `%${texto.toUpperCase()}%`} },
+            { codigo_marca: {[Op.like]: `%${texto.toUpperCase()}%`} }
+        ];
+    }
+    return where;
+}
 
 const registrarMarca = async (req, res) => {
     const {nombre_marca, codigo_marca} = req.body;
@@ -46,12 +61,25 @@ const registrarMarca = async (req, res) => {
 const listaMarcas = async (req, res) => {
     try {
         // listar 
-        const marcas = await Marca.findAll({
-            where: {estado_marca: true}
+        const {pagina, limite, offset} = leerPaginacion(req.query);
+        const where = armarWhereMarca(true, req.query.busqueda);
+
+        const {count, rows: marcas} = await Marca.findAndCountAll({
+            where,
+            limit: limite,
+            offset,
+            order: [['id_marca', 'DESC']]
         });
 
         res.json({
-            marcas
+            msg: 'Lista de Marcas',
+            marcas,
+            paginacion: {
+                total: count,
+                totalPaginas: Math.max(1, Math.ceil(count / limite)),
+                paginaActual: pagina,
+                limite
+            }
         });
     } catch (error) {
         console.log(error);
@@ -166,12 +194,25 @@ const listaMarcasEliminados = async (req, res) => {
     }
 
     try {
-        const marca = await Marca.findAll({
-            where: {estado_marca: 0}
+        const {pagina, limite, offset} = leerPaginacion(req.query);
+        const where = armarWhereMarca(false, req.query.busqueda);
+
+        const {count, rows: marcas} = await Marca.findAndCountAll({
+            where,
+            limit: limite,
+            offset,
+            order: [['id_marca', 'DESC']]
         });
 
         res.json({
-            marca
+            msg: 'Lista de Marcas Eliminadas',
+            marcas,
+            paginacion: {
+                total: count,
+                totalPaginas: Math.max(1, Math.ceil(count / limite)),
+                paginaActual: pagina,
+                limite
+            }
         });
     } catch (error) {
         console.log(error);
