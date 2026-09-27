@@ -1,5 +1,68 @@
+import fs from "fs";
+import path from "path";
+import { Op } from "sequelize";
 import { Producto, Categoria, Marca } from "../associations/index.js";
+import { carpetaProductos } from "../middleware/uploadProducto.js";
+import { leerPaginacion } from "../helpers/paginar.js";
 
+// funciones nativas
+
+// construir un where para las listas
+const armarWhereProducto = (estado_prod, filtros = {}) => {
+    // los datos que vienen del frontEnd
+    const {
+        nombre_prod,
+        codigo_prod,
+        categoria_id,
+        marca_id,
+        precioVentaMin,
+        precioVentaMax,
+        precioCompraMin,
+        precioCompraMax
+    } = filtros;
+
+    const where = { estado_prod };
+
+    // busqueda por nombre, independiente de codigo
+    if (nombre_prod && nombre_prod.trim() !== '') {
+        where.nombre_prod = { [Op.like]: `%${nombre_prod.trim().toUpperCase()}%` };
+    }
+
+    // busqueda por codigo, independiente de nombre
+    if (codigo_prod && codigo_prod.trim() !== '') {
+        where.codigo_prod = { [Op.like]: `%${codigo_prod.trim().toUpperCase()}%` };
+    }
+
+    // filtros exactos por id (categoria y marca)
+    if (categoria_id) where.categoria_id = categoria_id; // categoria
+    if (marca_id) where.marca_id = marca_id; // marca
+
+    // rango de precio: solo uno de los dos, nunca los dos al mismo tiempo
+    if (precioVentaMin || precioVentaMax) {
+        where.precio_venta = {}; // pordefecto vacio
+
+        // se hace por ceparados para que se pueda enviar solo un valor
+
+        // precio de venta >= precio Minimo
+        if (precioVentaMin) where.precio_venta[Op.gte] = Number(precioVentaMin);
+
+        // precio de venta >= precio Maximo
+        if (precioVentaMax) where.precio_venta[Op.lte] = Number(precioVentaMax);
+
+    } else if (precioCompraMin || precioCompraMax) {
+        where.precio_compra = {};
+        if (precioCompraMin) where.precio_compra[Op.gte] = Number(precioCompraMin);
+        if (precioCompraMax) where.precio_compra[Op.lte] = Number(precioCompraMax);
+    }
+
+    return where;
+}
+
+
+
+// funciones de exportacion
+
+// registrar
 const registrarProducto = async (req, res) => {
     const {categoria_id, marca_id, nombre_prod, cantidad_prod, precio_compra, precio_venta, detalle_prod} = req.body;
 
@@ -40,6 +103,9 @@ const registrarProducto = async (req, res) => {
             return res.status(409).json({msg: error.message});
         }
 
+        // si llego algun archivo
+        let foto_producto = req.file.filename;
+
         // toda validacion superada
         const producto = await Producto.create({
             categoria_id: Number(categoria_id),
@@ -48,6 +114,7 @@ const registrarProducto = async (req, res) => {
             cantidad_prod: Number(cantidad_prod),
             precio_compra: parseFloat(precio_compra),
             precio_venta: parseFloat(precio_venta),
+            foto_producto: foto_producto? foto_producto.trim() : null,
             detalle_prod: detalle_prod.toUpperCase().trim()
         });
 
@@ -65,8 +132,26 @@ const registrarProducto = async (req, res) => {
 // Lista productos
 const listaProductos = async (req, res) => {
     try {
-        const productos = await Producto.findAll({
-            where: { estado_prod: true },
+        // acondiconar la lista
+        const {pagina, limite, offset} = leerPaginacion(req.query);
+        
+        // armar el where para el filtrado
+        const where = armarWhereProducto(true, {
+            nombre_prod: req.query.nombre_prod,
+            codigo_prod: req.query.codigo_prod,
+            categoria_id: req.query.categoria_id,
+            marca_id: req.query.marca_id,
+            precioVentaMin: req.query.precioVentaMin,
+            precioVentaMax: req.query.precioVentaMax,
+            precioCompraMin: req.query.precioCompraMin,
+            precioCompraMax: req.query.precioCompraMax
+        });
+
+        const {count, rows: productos} = await Producto.findAndCountAll({
+            where,
+            limit: limite,
+            offset,
+            order: [['id_producto', 'DESC']],
             include: [
                 { model: Categoria, as: 'categoria' },
                 { model: Marca, as: 'marca' }
@@ -74,7 +159,14 @@ const listaProductos = async (req, res) => {
         });
 
         res.json({
-            productos
+            msg: 'Lista de Productos',
+            productos,
+            paginacion: {
+                total: count,
+                totalPaginas: Math.max(1, Math.ceil(count / limite)),
+                paginaActual: pagina,
+                limite
+            }
         });
     } catch (error) {
         console.log(error);
@@ -127,6 +219,26 @@ const actualizarProducto = async (req, res) => {
             return res.status(403).json({msg: error.message});
         }
 
+        // Si el produicto ya tiene imagen
+        let foto_producto = producto.foto_producto;
+
+        // Validar si llego un archivo del frontEnd
+        if (req.file) {
+            // valida si ya hay imagen para ese archivo en la DB
+            if (producto.foto_producto) {
+                // Se arma la URL de la imagen anterior para eliminarla del DISCO
+                const rutaImgAnterior = path.join(carpetaProductos, producto.foto_producto);
+
+                // si existe la elimina
+                if (fs.existsSync(rutaImgAnterior)) {
+                    fs.unlinkSync(rutaImgAnterior);
+                }
+            }
+
+            // actualiza la imagen con la del forntEnd
+            foto_producto = req.file.filename;
+        }
+
         const actualizarProducto = await producto.update({
             categoria_id: categoria_id !== undefined ? Number(categoria_id) : producto.categoria_id,
             marca_id: marca_id !== undefined ? Number(marca_id) : producto.marca_id,
@@ -134,6 +246,7 @@ const actualizarProducto = async (req, res) => {
             cantidad_prod: cantidad_prod !== undefined ? Number(cantidad_prod) : producto.cantidad_prod,
             precio_compra: precio_compra !== undefined ? parseFloat(precio_compra) : producto.precio_compra,
             precio_venta: precio_venta !== undefined ? parseFloat(precio_venta) : producto.precio_venta,
+            foto_producto, // va la imagen
             estado_prod: estado_prod !== undefined ? Boolean(Number(estado_prod)) : producto.estado_prod,
             detalle_prod: detalle_prod ? detalle_prod.toUpperCase().trim() : producto.detalle_prod
         });
@@ -193,8 +306,26 @@ const listaProductosEliminados = async (req, res) => {
     }
 
     try {
-        const productos = await Producto.findAll({
-            where: { estado_prod: 0 },
+        // acondiconar la lista
+        const {pagina, limite, offset} = leerPaginacion(req.query);
+        
+        // armar el where para el filtrado
+        const where = armarWhereProducto(false, {
+            nombre_prod: req.query.nombre_prod,
+            codigo_prod: req.query.codigo_prod,
+            categoria_id: req.query.categoria_id,
+            marca_id: req.query.marca_id,
+            precioVentaMin: req.query.precioVentaMin,
+            precioVentaMax: req.query.precioVentaMax,
+            precioCompraMin: req.query.precioCompraMin,
+            precioCompraMax: req.query.precioCompraMax
+        });
+
+        const {count, rows: productos} = await Producto.findAndCountAll({
+            where,
+            limit: limite,
+            offset,
+            order: [['id_producto', 'DESC']],
             include: [
                 { model: Categoria, as: 'categoria' },
                 { model: Marca, as: 'marca' }
@@ -202,8 +333,14 @@ const listaProductosEliminados = async (req, res) => {
         });
 
         res.json({
-            msg: "Producto Activado",
-            productos
+            msg: 'Lista de Productos Eliminados',
+            productos,
+            paginacion: {
+                total: count,
+                totalPaginas: Math.max(1, Math.ceil(count / limite)),
+                paginaActual: pagina,
+                limite
+            }
         });
     } catch (error) {
         console.log(error);
@@ -248,6 +385,26 @@ const activarProducto = async (req, res) => {
     }
 }
 
+// obtener categorias
+// Lista categorias
+const listaCategorias = async (req, res) => {
+    try {
+
+        const categorias = await Categoria.findAll({
+            where: {estado_categoria: true},
+        });
+
+        res.json({
+            msg: 'Lista de categorias',
+            categorias
+        });
+    } catch (error) {
+        console.log(error);
+        const err = new Error('No se pudo listar los categorias');
+        return res.status(500).json({ msg: err.message });
+    }
+}
+
 
 
 // exportaciones
@@ -258,5 +415,6 @@ export {
     actualizarProducto,
     eliminarProducto,
     listaProductosEliminados,
-    activarProducto
+    activarProducto,
+    listaCategorias
 }

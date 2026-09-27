@@ -1,5 +1,6 @@
 // Importaciones
 import express from "express";
+import multer from "multer"; // para reconocer los errores que el propio Multer genera (archivo muy pesado, campo inesperado, etc.)
 import dotenv from 'dotenv';
 import cors from 'cors';
 import path from "path"; // manejo de URL
@@ -91,6 +92,47 @@ app.use('/api/proveedores', proveedorRoutes);
 app.use('/api/factura-cliente', facturaClienteRoutes);
 app.use('/api/factura-proveedor', facturaProveedorRoutes);
 
+
+// Manejo de errores de subida de archivos (Multer): sin esto, un
+// archivo muy pesado o con el nombre de campo equivocado tira un
+// stack trace crudo en la consola y el frontend recibe una respuesta
+// que no puede interpretar. Este middleware "atrapa" esos errores y le
+// contesta al frontend un JSON con un mensaje claro, igual que hacen
+// tus controladores normales.
+//
+// Un middleware con estos 4 parametros (err, req, res, next) es un
+// "error handler" para Express: nunca se llama manualmente, Express lo
+// invoca solo cuando algo antes llama a next(err) o lanza un error --
+// por eso tiene que ir despues de todas las rutas (arriba), para que
+// pueda atrapar los errores que salen de cualquiera de ellas.
+app.use((err, req, res, next) => {
+
+    // errores propios de Multer: archivo muy pesado, o el nombre del
+    // campo del archivo no es el que la ruta espera
+    if (err instanceof multer.MulterError) {
+        let msg = 'No se pudo subir el archivo';
+
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            msg = 'La imagen no puede pesar mas de 2MB';
+        } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            msg = 'El campo del archivo no es el esperado';
+        }
+
+        return res.status(400).json({ msg });
+    }
+
+    // errores del fileFilter de Multer (por ejemplo "Solo se permiten
+    // imagenes JPG, PNG o WEBP", definidos en uploadEmpresa.js /
+    // uploadProducto.js): ya traen un mensaje pensado para el usuario
+    if (err && err.message) {
+        console.log(err);
+        return res.status(400).json({ msg: err.message });
+    }
+
+    // cualquier otro error no esperado
+    console.log(err);
+    return res.status(500).json({ msg: 'Ocurrio un error inesperado en el servidor' });
+});
 
 
 // Puerto web o local 

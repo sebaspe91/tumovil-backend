@@ -30,6 +30,9 @@ const Producto = db.define('productos', {
     precio_venta: {
         type: Sequelize.DECIMAL
     },
+    foto_producto: {
+        type: Sequelize.STRING
+    },
     estado_prod: {
         type: Sequelize.BOOLEAN,
         defaultValue: true
@@ -37,6 +40,8 @@ const Producto = db.define('productos', {
     detalle_prod: {
         type: Sequelize.STRING
     }
+}, {
+    freezeTableName: true // usa el nombre tal cual, sin pluralizar
 });
 
 // hook: genera el codigo_prod automáticamente antes de insertar
