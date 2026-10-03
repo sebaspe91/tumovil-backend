@@ -15,11 +15,21 @@ const calcularTotalFactura = (detalles) => {
 
 
 const registrarFacturaCliente = async (req, res) => {
-    const { cliente_id, empresa_fc_id, productos } = req.body;
+    const { cliente_id, productos } = req.body;
     // productos: [{ producto_dc_id, cantidad_dc_venta }, ...]
+    //
+    // OJO: ya NO se recibe "empresa_fc_id" del body. Antes el frontend lo
+    // mandaba, y para eso necesitaba consultar GET /empresa primero -- pero
+    // esa ruta es SOLO PARA ADMIN (ver empresaController.obtenerEmpresa), asi
+    // que un usuario VENDEDOR nunca podia conseguir ese id y la factura
+    // fallaba con "Debe indicar cliente, empresa y al menos un producto"
+    // aunque hubiera elegido cliente y productos. La solucion: la empresa
+    // SIEMPRE es la unica fila activa, el backend ya sabe cual es (es la
+    // misma consulta que usa obtenerEmpresa) -- no hace falta que nadie se
+    // la mande, y asi cualquier usuario logueado puede registrar una factura.
 
-    if (!cliente_id || !empresa_fc_id || !Array.isArray(productos) || productos.length === 0) {
-        const error = new Error('Debe indicar cliente, empresa y al menos un producto');
+    if (!cliente_id || !Array.isArray(productos) || productos.length === 0) {
+        const error = new Error('Debe indicar cliente y al menos un producto');
         return res.status(400).json({ msg: error.message });
     }
 
@@ -32,17 +42,21 @@ const registrarFacturaCliente = async (req, res) => {
             return res.status(404).json({ msg: 'El cliente no existe' });
         }
 
-        const empresa = await Empresa.findByPk(empresa_fc_id);
+        // la unica empresa activa -- no depende de lo que mande el frontend
+        const empresa = await Empresa.findOne({
+            where: { estado_empresa: true },
+            transaction: t
+        });
         if (!empresa) {
             await t.rollback(); // cancela la transaction de DB
-            return res.status(404).json({ msg: 'La empresa no existe' });
+            return res.status(404).json({ msg: 'No hay ninguna empresa registrada' });
         }
 
         // crear la cabecera de la factura
         const factura = await FacturaCliente.create({
             cliente_id,
             usuario_fc_id: req.usuario.id_usuario, // usuario autenticado, no del body
-            empresa_fc_id,
+            empresa_fc_id: empresa.id_empresa,
             fecha_fc: new Date()
         }, { transaction: t }); // Se ejecuta esta transaccion sin importar el commit()
 
