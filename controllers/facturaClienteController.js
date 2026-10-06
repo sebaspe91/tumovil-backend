@@ -1,7 +1,9 @@
 // controllers/facturaController.js
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer'; // para interpretar codigo html a pdf
 import plantillaFacturaCliente from '../utils/plantillaFacturaCliente.js';
 import db from '../config/db.js';
+import { Op } from 'sequelize'; // Op = operadores de busqueda: Op.like, Op.or, Op.and, Op.gte, Op.lte
+import { leerPaginacion } from '../helpers/paginar.js'; // calcula pagina, limite y offset desde la URL
 import { FacturaCliente, DetalleCliente, Producto, Cliente, Empresa, Usuario } from '../associations/index.js';
 
 // calcular factura
@@ -58,7 +60,7 @@ const registrarFacturaCliente = async (req, res) => {
             usuario_fc_id: req.usuario.id_usuario, // usuario autenticado, no del body
             empresa_fc_id: empresa.id_empresa,
             fecha_fc: new Date()
-        }, { transaction: t }); // Se ejecuta esta transaccion sin importar el commit()
+        }, { transaction: t }); // Se ejecuta esta transaccion sin importar el commit() pero queda en el estado de reposo si hay error se borra
 
         // creamos lista para los detalle y su total
         const detallesCreados = [];
@@ -79,6 +81,7 @@ const registrarFacturaCliente = async (req, res) => {
                 return res.status(400).json({ msg: `No hay suficiente stock de "${producto.nombre_prod}"` });
             }
 
+            // creamos el detalleCliente
             const detalle = await DetalleCliente.create({
                 producto_dc_id,
                 fact_cli_id: factura.id_fact_cli,
@@ -142,48 +145,182 @@ const registrarFacturaCliente = async (req, res) => {
 };
 
 // Obtiene la factura 
-const listaFacturaCliente = async (req, res) => {
-    try {
+// =====================================================================
+//  FILTROS + PAGINACION PARA LAS LISTAS DE FACTURAS (historial)
+// =====================================================================
+//  Antes el backend mandaba TODAS las facturas y el frontend filtraba con
+//  .filter() en el navegador. Eso funciona con 20 facturas pero con 20.000
+//  seria lento (viaja todo por la red y el navegador carga todo). Ahora
+//  el backend hace el trabajo: la BASE DE DATOS filtra y entrega solo la
+//  pagina que se esta viendo.
+//
+//  La URL puede traer 4 datos opcionales (query string):
+//      ?busqueda=juan perez   -> texto para buscar por CLIENTE
+//      ?desde=2026-10-01T05:00:00.000Z  -> fecha inicial de la FACTURA
+//      ?hasta=2026-10-02T04:59:59.999Z  -> fecha final de la FACTURA
+//      ?pagina=2&limite=5     -> paginacion (la lee leerPaginacion)
+//  Si alguno no viene, simplemente no se aplica ese filtro.
+// =====================================================================
 
-        const factura = await FacturaCliente.findAll({
-            where: {estado_fc: true},
-            order: [['fecha_fc', 'DESC']], // ordena las facturas mas reciente primero
+// PASO 1 -- leerFecha: convierte el texto que llega por la URL en una
+// fecha de verdad. Si viene vacio o con basura ("hola"), devuelve null
+// en vez de reventar (new Date('hola') seria "Invalid Date").
+const leerFecha = (valor) => {
+    if (!valor) return null;                 // no vino el parametro
+    const fecha = new Date(valor);           // intenta convertir el texto a fecha
+    return Number.isNaN(fecha.getTime()) ? null : fecha; // getTime() es NaN si es invalida --- > 
+    
+    // .isNaN(..) => si NO se puede convertir en fecha = true
+
+    // getTime() => devuelve los milesegundos de esa fecha
+};
+
+// PASO 2 -- escaparLike: en un LIKE los simbolos % y _ son comodines.
+// Si el usuario escribe "50%" no queremos que % signifique "cualquier cosa",
+// asi que les anteponemos una barra invertida para que cuenten como texto normal.
+const escaparLike = (texto) => texto.replace(/[\\%_]/g, '\\$&');
+
+// PASO 3 -- armarFiltrosFactura: construye el "WHERE" de la consulta.
+//   estado -> true  = facturas activas, false = facturas eliminadas
+//   query  -> req.query (lo que viene despues del ? en la URL)
+// Devuelve { error } si los datos no son validos o { where } si todo bien.
+const armarFiltrosFactura = (estado, query) => {
+    // Condicion base: siempre filtramos por estado (activas o eliminadas).
+    const where = { estado_fc: estado };
+
+    // ---- Filtro por FECHA de la factura (casilla aparte en el frontend) ----
+    const desde = leerFecha(query.desde);
+    const hasta = leerFecha(query.hasta);
+
+    // Si el usuario puso un rango al reves (desde mayor que hasta) no tiene
+    // sentido: avisamos en vez de devolver una lista vacia misteriosa.
+    if (desde && hasta && desde > hasta) {
+        return { error: 'La fecha "desde" no puede ser mayor que la fecha "hasta"' };
+    }
+
+    // Op.gte = "mayor o igual" (>=), Op.lte = "menor o igual" (<=).
+    // Se arma un objeto { [Op.gte]: desde, [Op.lte]: hasta } solo con las
+    // partes que vinieron; asi se puede filtrar solo "desde", solo "hasta" o ambos.
+    if (desde || hasta) {
+        where.fecha_fc = {};
+        if (desde) where.fecha_fc[Op.gte] = desde;
+        if (hasta) where.fecha_fc[Op.lte] = hasta;
+    }
+
+    // ---- Filtro por CLIENTE (casilla de busqueda) ----
+    const texto = (query.busqueda || '').toString().trim();
+    if (texto) {
+        // Separamos en palabras: "juan perez" -> ["juan", "perez"].
+        // CADA palabra debe aparecer (AND) en el nombre, el apellido o la
+        // cedula (OR) del cliente. Asi "juan perez" encuentra a "JUAN PEREZ"
+        // aunque nombre y apellido esten en columnas distintas.
+        const palabras = texto.split(/\s+/); // separa el texto en arrays
+
+        where[Op.and] = palabras.map((palabra) => {
+            const limpia = escaparLike(palabra); // valida caracteres especiales %
+            return {
+                [Op.or]: [
+                    // '$cliente.nombre_cliente$' = columna de la tabla unida (alias "cliente")
+                    { '$cliente.nombre_cliente$': { [Op.like]: `%${limpia.toUpperCase()}%` } },
+                    { '$cliente.apellido_cliente$': { [Op.like]: `%${limpia.toUpperCase()}%` } },
+                    // la cedula son numeros, no hace falta pasarla a mayusculas
+                    { '$cliente.cedula_cliente$': { [Op.like]: `%${limpia}%` } }
+                ]
+            };
+        });
+    }
+
+    return { where };
+};
+
+// PASO 4 -- consultarFacturasPaginadas: hace la consulta completa.
+// Se hace en DOS PASOS a proposito:
+//   Paso A: pedir SOLO los ids de la pagina (barato) aplicando filtros,
+//           orden, limit y offset.  Aqui se une con "cliente" para poder buscar.
+//   Paso B: con esos ids, pedir las facturas COMPLETAS (cliente, vendedor,
+//           empresa, detalles y productos).
+// Por que no todo junto? Cada factura tiene VARIOS detalles (hasMany). Si
+// pones limit:5 sobre una consulta con hasMany, la base de datos cuenta filas
+// de detalles y no facturas: podrias recibir 2 facturas en vez de 5.
+const consultarFacturasPaginadas = async (estado, req) => {
+    // 4.1 filtros
+    const { where, error } = armarFiltrosFactura(estado, req.query);
+    if (error) return { error };
+
+    // 4.2 pagina, limite y offset (helper que ya usan clientes/usuarios)
+    const { pagina, limite, offset } = leerPaginacion(req.query);
+
+    // 4.3 orden: mas reciente primero; el id desempata si dos facturas
+    // tienen la misma fecha (asi una factura nunca se repite ni se salta
+    // entre una pagina y otra).
+    const orden = [['fecha_fc', 'DESC'], ['id_fact_cli', 'DESC']];
+
+    // 4.4 PASO A: solo ids + total.
+    // findAndCountAll devuelve { count, rows }: count = total de facturas que
+    // cumplen los filtros (sin importar la pagina) y rows = las de esta pagina.
+    const { count, rows } = await FacturaCliente.findAndCountAll({
+        where,
+        attributes: ['id_fact_cli'],   // solo necesitamos el id
+        include: [{
+            model: Cliente,
+            as: 'cliente',
+            attributes: [],            // une la tabla para filtrar pero no trae sus columnas
+            required: true             // INNER JOIN: solo facturas que tengan cliente
+        }],
+        order: orden,
+        limit: limite,
+        offset,
+        raw: true                      // objetos simples, mas rapido
+    });
+
+    const ids = rows.map((fila) => fila.id_fact_cli);
+
+    // 4.5 PASO B: facturas completas de esos ids (misma forma que antes,
+    // asi el frontend no cambia la forma en que lee cada factura).
+    let facturas = [];
+    if (ids.length > 0) {
+        facturas = await FacturaCliente.findAll({
+            where: { id_fact_cli: ids },   // WHERE id_fact_cli IN (ids)
+            order: orden,                  // el mismo orden que en el paso A
             include: [
-                {
-                    model: Cliente,
-                    as: 'cliente',
-                    attributes: ['nombre_cliente', 'apellido_cliente', 'cedula_cliente']
-                },
-                {
-                    model: Usuario,
-                    as: 'usuario',
-                    attributes: ['nombre_user', 'apellido_user', 'cedula_user', 'tipo_user']
-                },
-                {
-                    model: Empresa,
-                    as: 'empresa',
-                    attributes: ['nombre_empresa', 'nit_empresa', 'cel_empresa']
-                },
+                { model: Cliente, as: 'cliente', attributes: ['nombre_cliente', 'apellido_cliente', 'cedula_cliente'] },
+                { model: Usuario, as: 'usuario', attributes: ['nombre_user', 'apellido_user', 'cedula_user', 'tipo_user'] },
+                { model: Empresa, as: 'empresa', attributes: ['nombre_empresa', 'nit_empresa', 'cel_empresa'] },
                 {
                     model: DetalleCliente,
                     as: 'detalles',
                     attributes: ['precio_dc_venta', 'cantidad_dc_venta'],
-                    include: {
-                        model: Producto,
-                        as: 'producto',
-                        attributes: ['nombre_prod']
-                    }
+                    include: { model: Producto, as: 'producto', attributes: ['nombre_prod'] }
                 }
             ]
         });
+    }
 
-        if (!factura) {
-            return res.status(404).json({ msg: 'Facturas no encontradas' });
+    // 4.6 datos de paginacion: la misma forma que usan clientes y usuarios,
+    // asi el componente <Paginacion /> del frontend funciona sin cambios.
+    const paginacion = {
+        total: count,                              // cuantas facturas cumplen los filtros
+        totalPaginas: Math.ceil(count / limite),   // redondeo hacia arriba: 11 facturas / 5 = 3 paginas
+        paginaActual: pagina,
+        limite
+    };
+
+    return { facturas, paginacion };
+};
+
+// LISTA DE FACTURAS ACTIVAS (con filtros y paginacion)
+const listaFacturaCliente = async (req, res) => {
+    try {
+        const { facturas, paginacion, error } = await consultarFacturasPaginadas(true, req);
+
+        if (error) {
+            return res.status(400).json({ msg: error });
         }
 
         res.json({
             msg: 'Lista de Facturas obtenidas correctamente',
-            listaFacturaCliente: factura
+            listaFacturaCliente: facturas,
+            paginacion
         });
     } catch (error) {
         console.log(error);
@@ -269,6 +406,10 @@ const obtenerTotalFactura = async (req, res) => {
         res.status(500).json({ msg: 'No se pudo calcular el total' });
     }
 };
+
+
+
+
 
 // actualizar una factura y su detalle
 const actualizarFacturaCliente = async (req, res) => {
@@ -436,27 +577,19 @@ const eliminarFacturaCliente = async (req, res) => {
 };
 
 // lista solo las facturas eliminadas
+// LISTA DE FACTURAS ELIMINADAS (mismos filtros y paginacion, estado_fc = false)
 const listaFacturaClienteEliminadas = async (req, res) => {
     try {
-        const facturas = await FacturaCliente.findAll({
-            where: { estado_fc: false },
-            order: [['fecha_fc', 'DESC']],
-            include: [
-                { model: Cliente, as: 'cliente', attributes: ['nombre_cliente', 'apellido_cliente', 'cedula_cliente'] },
-                { model: Usuario, as: 'usuario', attributes: ['nombre_user', 'apellido_user', 'cedula_user', 'tipo_user'] },
-                { model: Empresa, as: 'empresa', attributes: ['nombre_empresa', 'nit_empresa', 'cel_empresa'] },
-                {
-                    model: DetalleCliente,
-                    as: 'detalles',
-                    attributes: ['precio_dc_venta', 'cantidad_dc_venta'],
-                    include: { model: Producto, as: 'producto', attributes: ['nombre_prod'] }
-                }
-            ]
-        });
+        const { facturas, paginacion, error } = await consultarFacturasPaginadas(false, req);
+
+        if (error) {
+            return res.status(400).json({ msg: error });
+        }
 
         res.json({
             msg: 'Lista de facturas eliminadas obtenida correctamente',
-            listaFacturaClienteEliminadas: facturas
+            listaFacturaClienteEliminadas: facturas,
+            paginacion
         });
     } catch (error) {
         console.log(error);

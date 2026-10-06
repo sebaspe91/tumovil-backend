@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer'; // para interpretar HTML a PDF
 import plantillaFacturaProveedor from '../utils/plantillaFacturaProveedor.js';
 import db from '../config/db.js';
 import { 
@@ -9,6 +9,8 @@ import {
     Empresa, 
     Usuario    
 } from '../associations/index.js';
+import { Op } from 'sequelize'; // Op = operadores de busqueda: Op.like, Op.or, Op.and, Op.gte, Op.lte
+import { leerPaginacion } from '../helpers/paginar.js';
 
 // calcular factura
 const calcularTotalFactura = (detalles) => {
@@ -61,13 +63,101 @@ const calcularPrecioVentaConGanancia = (precioVentaActual, precioCompra) => {
 };
 
 
+// =====================================================================
+//  STOCK EN COMPRAS: la regla es la INVERSA de la de ventas
+// =====================================================================
+//   Registrar una compra  -> SUMA al stock   (llega mercancia a la bodega)
+//   Eliminar una compra   -> RESTA del stock (es como si nunca hubiera llegado)
+//   Reactivar una compra  -> SUMA otra vez
+//   Actualizar una compra -> RESTA lo de los detalles viejos y SUMA los nuevos
+// Ojo: al RESTAR hay que validar que el stock alcance. Si ya se vendio parte
+// de esa mercancia, restar dejaria el inventario en negativo.
+
+// agrupa los detalles por producto y suma sus cantidades. Sirve por si la
+// misma factura trae el mismo producto en dos lineas: validamos la SUMA y no
+// cada linea por separado (dos lineas de 5 pasarian cada una con stock 8,
+// pero juntas piden 10).
+// Resultado: Map { id_producto => cantidad_total }
+const agruparCantidadesPorProducto = (detalles) => {
+    const cantidades = new Map();
+    for (const detalle of detalles) {
+        const actual = cantidades.get(detalle.producto_dp_id) || 0;
+        cantidades.set(detalle.producto_dp_id, actual + detalle.cantidad_dp_compra);
+    }
+    return cantidades;
+};
+
+// RESTA del stock lo que sumo una compra (eliminar / actualizar).
+// Primero valida TODOS los productos y solo si todos alcanzan resta. Si
+// alguno no alcanza no se toca nada y devuelve la lista de errores
+// (el controller hace rollback y responde con ellos).
+const descontarStockDeCompra = async (detalles, t) => {
+    const errores = [];
+    const pendientes = [];
+
+    for (const [productoId, cantidad] of agruparCantidadesPorProducto(detalles)) {
+        const producto = await Producto.findByPk(productoId, { transaction: t });
+
+        // si el producto ya no existe no hay stock que quitar: se salta
+        if (!producto) continue;
+
+        if (producto.cantidad_prod < cantidad) {
+            errores.push(`No se puede quitar el stock de "${producto.nombre_prod}" (en bodega: ${producto.cantidad_prod}, de esta factura: ${cantidad}). Parte de esa mercancia ya se vendio`);
+            continue;
+        }
+
+        pendientes.push({ producto, cantidad });
+    }
+
+    if (errores.length > 0) return { errores };
+
+    // todo valido: ahora si se resta
+    for (const { producto, cantidad } of pendientes) {
+        await producto.update({
+            cantidad_prod: producto.cantidad_prod - cantidad
+        }, { transaction: t });
+    }
+
+    return { errores: [] };
+};
+
+// SUMA al stock lo de una compra (reactivar). Aca NO se valida que alcance:
+// sumar mercancia nunca puede dejar el inventario en negativo. Solo se
+// valida que el producto siga existiendo.
+const reponerStockDeCompra = async (detalles, t) => {
+    const errores = [];
+    const pendientes = [];
+
+    for (const [productoId, cantidad] of agruparCantidadesPorProducto(detalles)) {
+        const producto = await Producto.findByPk(productoId, { transaction: t });
+
+        if (!producto) {
+            errores.push(`El producto con id ${productoId} ya no existe, no se puede reactivar`);
+            continue;
+        }
+
+        pendientes.push({ producto, cantidad });
+    }
+
+    if (errores.length > 0) return { errores };
+
+    for (const { producto, cantidad } of pendientes) {
+        await producto.update({
+            cantidad_prod: producto.cantidad_prod + cantidad
+        }, { transaction: t });
+    }
+
+    return { errores: [] };
+};
+
+
 // enpont
 const registrarFacturaProveedor = async (req, res) => {
     // elementos enviados por el usuario
-    const {proveedor_id, empresa_fp_id, productos} = req.body;
+    const {proveedor_id, productos} = req.body;
 
-    if (!proveedor_id || !empresa_fp_id || !Array.isArray(productos) || productos.length === 0) {
-        const error = new Error('Debe indicar el proveedor, empresa y al menos un producto');
+    if (!proveedor_id || !Array.isArray(productos) || productos.length === 0) {
+        const error = new Error('Debe indicar el proveedor y al menos un producto');
         return res.status(400).json({ msg: error.message });
     }
 
@@ -82,17 +172,20 @@ const registrarFacturaProveedor = async (req, res) => {
         }
 
         // empresa
-        const empresa = await Empresa.findByPk(empresa_fp_id);
+        const empresa = await Empresa.findOne({
+            where: { estado_empresa: true },
+            transaction: t
+        });
         if (!empresa) {
             await t.rollback(); // revierte la transaction de DB
             return res.status(404).json({ msg: 'La empresa no existe' });
         }
 
-        // Creamos la factura 
+        // Creamos la cabecera factura 
         const factura = await FacturaProveedor.create({
             proveedor_id,
             usuario_fp_id: req.usuario.id_usuario,
-            empresa_fp_id,
+            empresa_fp_id: empresa.id_empresa,
             fecha_fp: new Date()
         }, {transaction: t}); // se ejecuta esta accion pero se puede borrar si algo sale mal
 
@@ -195,12 +288,109 @@ const registrarFacturaProveedor = async (req, res) => {
     }
 }
 
-// listar las facturas de proveedor
-const listaFacturaProveedor = async (req, res) => {
-    try {
-        const factura = await FacturaProveedor.findAll({
-            where: {estado_fp: true},
-            order: [['fecha_fp', 'DESC']],
+
+
+// -----------------------------------------------------------------------
+// -------------------------- Inicio para listar las Facturas ------------
+
+// validar el formato de fecha
+const leerFecha = valor => {
+    if (!valor) return null; // si no trae nada null
+    const fecha = new Date(valor); // convertimos a formato fecha
+    return Number.isNaN(fecha.getTime()) ? null : fecha; // valida si NO es formato fecha, si no es arroja null si es arroja la fecha
+}
+
+// validar si el texto de busqueda tiene caracteres especiales y tratarlos
+const escaparLike = texto => texto.replace(/[\\%_]/g, '\\$&');
+
+// construir el where
+const armarFiltrosFactura = (estado, query) => {
+    // estado de la factura
+    const where = {estado_fp: estado};
+
+    // filtrar por fecha
+    const desde = leerFecha(query.desde);
+    const hasta = leerFecha(query.hasta);
+
+    // validar el rango
+    if (desde && hasta && desde > hasta) {
+        return {error: 'La fecha "desde" no puede ser mayor que la fecha "hasta"'};
+    }
+
+    // agregamos a where la fecha
+    if (desde || hasta) {
+        where.fecha_fp = {};
+        if (desde) where.fecha_fp[Op.gte] = desde; // "mayor o igual" a desde
+        if (hasta) where.fecha_fp[Op.lte] = hasta; // "menor o igual" a hasta
+    }
+
+    // filtro segun el PROVEEDOR (nombre, nit o correo)
+    const texto = (query.busqueda || '').toString().trim();
+
+    // solo si el usuario escribio algo (si no, no se agrega ninguna condicion)
+    if (texto) {
+        // separar por espacios: "distri norte" -> ['distri', 'norte']
+        // CADA palabra debe aparecer (AND) en el nombre, el nit o el correo (OR)
+        const palabras = texto.split(/\s+/);
+
+        // OJO: antes decia "where[Op.and]. palabras.map" (con un punto). Eso no
+        // asigna nada y revienta; hay que ASIGNAR el resultado con "="
+        where[Op.and] = palabras.map((palabra) => {
+            const limpia = escaparLike(palabra); // protege los comodines % y _
+            return {
+                [Op.or]: [
+                    // '$proveedor.xxx$' = columna de la tabla unida. El nombre antes
+                    // del punto es el ALIAS del include ("proveedor", singular)
+                    {'$proveedor.nombre_prov$': {[Op.like]: `%${limpia.toUpperCase()}%`}},
+                    {'$proveedor.nit_prov$': {[Op.like]: `%${limpia.toUpperCase()}%`}},
+                    {'$proveedor.correo_prov$': {[Op.like]: `%${limpia.toUpperCase()}%`}},
+                ]
+            };
+        });
+    }
+
+    return { where };
+}
+
+// consultar la pagina para facturas
+const consultarFacturasPaginadas = async (estado, req) => {
+    // filtros
+    const { where, error } = armarFiltrosFactura(estado, req.query);
+    if (error) return { error };
+
+    // armar la paginacion
+    const { pagina, limite, offset } = leerPaginacion(req.query);
+
+    // el orden
+    const orden = [['fecha_fp', 'DESC'], ['id_fact_prov', 'DESC']];
+
+    // consulta para los ids
+    const { count, rows } = await FacturaProveedor.findAndCountAll({
+        where,
+        attributes: ['id_fact_prov'], // solo necesitamos el id
+        include: [{
+            model: Proveedor,
+            as: 'proveedor',
+            attributes: [], // une la tabla para filtrar pero no trae sus columnas
+            required: true // INNER JOIN: solo facturas que tengan proveedores
+        }],
+        order: orden,
+        limit: limite,
+        offset,
+        raw: true // objetos simples, mas rapido
+    });
+
+    // lista de ids que se envian
+    const ids = rows.map((fila) => fila.id_fact_prov);
+
+    // Realizar la consulta real
+    let facturas = [];
+
+    // si la lista d eid trae algo
+    if (ids.length > 0) {
+        facturas = await FacturaProveedor.findAll({
+            where: {id_fact_prov: ids},
+            order: orden,
             include: [
                 {
                     model: Proveedor,
@@ -229,15 +419,33 @@ const listaFacturaProveedor = async (req, res) => {
                 }
             ]
         });
+    }
 
-        // Validar si existe
-        if (!factura) {
-            return res.status(404).json({ msg: 'Facturas no encontradas' });
+    // creamos la paginacion
+    const paginacion = {
+        total: count, // cuantas facturas cumplen los filtros
+        totalPaginas: Math.ceil(count / limite), // redondeo hacia arriba: 11 facturas / 5 = 3 paginas
+        paginaActual: pagina,
+        limite
+    };
+
+    return { facturas, paginacion };
+}
+
+
+// listar las facturas de proveedor
+const listaFacturaProveedor = async (req, res) => {
+    try {
+        const { facturas, paginacion, error } = await consultarFacturasPaginadas(true, req);
+
+        if (error) {
+            return res.status(400).json({ msg: error });
         }
 
         res.json({
             msg: 'Lista de Facturas obtenidas correctamente',
-            listaFacturaProveedor: factura
+            listaFacturaProveedor: facturas,
+            paginacion
         });
 
     } catch (error) {
@@ -323,6 +531,10 @@ const obtenerTotalFactura = async (req, res) => {
     }
 }
 
+
+
+
+
 // actualizar factura cliente
 const actualizarFacturaProveedor = async (req, res) => {
     const {id} = req.params;
@@ -358,15 +570,17 @@ const actualizarFacturaProveedor = async (req, res) => {
             return res.status(400).json({ msg: 'No se puede actualizar una factura eliminada' });
         }
 
-        // 1. devolver el stock de los detalles actuales
-        for (const detalle of factura.detalles) {
-            const producto = await Producto.findByPk(detalle.producto_dp_id, { transaction: t });
-            if (producto) {
-                await producto.update({
-                    cantidad_prod: producto.cantidad_prod - detalle.cantidad_dp_compra
-                }, { transaction: t });
-            }
-        } // ------------- OJO ----------------------------
+        // 1. deshacer la compra anterior: se RESTA del stock lo que sumaron los
+        // detalles actuales (validando que alcance; si ya se vendio parte de esa
+        // mercancia, no se puede editar la factura)
+        const { errores: erroresStock } = await descontarStockDeCompra(factura.detalles, t);
+        if (erroresStock.length > 0) {
+            await t.rollback();
+            return res.status(400).json({
+                msg: 'No se puede actualizar la factura',
+                errores: erroresStock
+            });
+        }
 
         // 2. borrar los detalles actuales
         await DetalleProveedor.destroy({
@@ -380,7 +594,7 @@ const actualizarFacturaProveedor = async (req, res) => {
             empresa_fp_id: empresa_fp_id ?? factura.empresa_fp_id
         }, { transaction: t });
 
- // 4. crear los nuevos detalles, validando stock otra vez
+        // 4. crear los nuevos detalles (en compra no hay tope de stock: se SUMA)
         const detallesCreados = [];
 
         for (const item of productos) {
@@ -502,14 +716,17 @@ const elimnarFacturaProveedor = async (req, res) => {
             return res.status(400).json({ msg: 'La factura ya se encuentra eliminada' });
         }
 
-        // devolver el stock de cada detalle
-        for (const detalle of factura.detalles) {
-            const producto = await Producto.findByPk(detalle.producto_dp_id, { transaction: t });
-            if (producto) {
-                await producto.update({
-                    cantidad_prod: producto.cantidad_prod + detalle.cantidad_dp_compra
-                }, { transaction: t });
-            }
+        // eliminar una COMPRA = quitar del stock lo que esa compra habia sumado
+        // (antes aca se SUMABA, que es lo que se hace al eliminar una VENTA).
+        // Se valida que alcance: si ya se vendio parte de esa mercancia, el
+        // stock quedaria negativo y se rechaza la operacion.
+        const { errores } = await descontarStockDeCompra(factura.detalles, t);
+        if (errores.length > 0) {
+            await t.rollback();
+            return res.status(400).json({
+                msg: 'No se puede eliminar la factura',
+                errores
+            });
         }
 
         // marcar como eliminada en vez de borrar la fila
@@ -530,43 +747,16 @@ const elimnarFacturaProveedor = async (req, res) => {
 // lista de facturas eliminadas
 const listaFacturaProveedorEliminadas = async (req, res) => {
     try {
-        const facturas = await FacturaProveedor.findAll({
-            where: { estado_fp: false },
-            order: [['fecha_fp', 'DESC']],
-            include: [
-                { 
-                    model: Proveedor, 
-                    as: 'proveedor',
-                    attributes: ['nombre_prov', 'nit_prov', 'correo_prov']
-                },
-                { 
-                    model: Usuario, 
-                    as: 'usuario', 
-                    attributes: ['nombre_user', 'apellido_user', 'cedula_user', 'tipo_user'] 
+        const { facturas, paginacion, error } = await consultarFacturasPaginadas(false, req);
 
-                },
-                { 
-                    model: Empresa, 
-                    as: 'empresa', 
-                    attributes: ['nombre_empresa', 'nit_empresa', 'cel_empresa'] 
-
-                },
-                {
-                    model: DetalleProveedor,
-                    as: 'detalles',
-                    attributes: ['precio_dp_compra', 'cantidad_dp_compra'],
-                    include: { 
-                        model: Producto, 
-                        as: 'producto', 
-                        attributes: ['nombre_prod'] 
-                    }
-                }
-            ]
-        });
+        if (error) {
+            return res.status(400).json({ msg: error });
+        }
 
         res.json({
-            msg: 'Lista de facturas eliminadas obtenida correctamente',
-            listaFacturaProveedorEliminadas: facturas
+            msg: 'Lista de Facturas Eliminadas obtenidas correctamente',
+            listaFacturaProveedorEliminadas: facturas,
+            paginacion
         });
     } catch (error) {
         console.log(error);
@@ -601,25 +791,11 @@ const reactivarFacturaProveedor = async (req, res) => {
             return res.status(400).json({ msg: 'La factura no se encuentra eliminada' });
         }
 
-        // 1. validar stock de todos los detalles antes de tocar nada
-        const errores = [];
-        const productosPorDetalle = [];
-
-        for (const detalle of factura.detalles) { // detalle = va contener todo el detalle de esa factura
-            const producto = await Producto.findByPk(detalle.producto_dp_id, { transaction: t });
-
-            if (!producto) {
-                errores.push(`El producto con id ${detalle.producto_dp_id} ya no existe, no se puede reactivar`);
-                continue;
-            }
-
-            if (producto.cantidad_prod < detalle.cantidad_dp_compra) {
-                errores.push(`No hay suficiente stock de "${producto.nombre_prod}" (disponible: ${producto.cantidad_prod}, requerido: ${detalle.cantidad_dp_compra})`);
-                continue;
-            }
-
-            productosPorDetalle.push({ producto, detalle });
-        }
+        // reactivar una COMPRA = volver a SUMAR al stock lo que habia sumado.
+        // (antes se validaba que hubiera stock y se restaba, que es lo de una
+        // VENTA). Aca no hace falta validar cantidades: sumar nunca deja el
+        // stock en negativo, solo se comprueba que los productos sigan existiendo.
+        const { errores } = await reponerStockDeCompra(factura.detalles, t);
 
         // si hay un error cancelar la operacion
         if (errores.length > 0) {
@@ -630,14 +806,7 @@ const reactivarFacturaProveedor = async (req, res) => {
             });
         }
 
-        // 2. descontar el stock, ya validado que alcanza para todos
-        for (const { producto, detalle } of productosPorDetalle) {
-            await producto.update({
-                cantidad_prod: producto.cantidad_prod - detalle.cantidad_dp_compra
-            }, { transaction: t });
-        }
-
-        // 3. reactivar la factura
+        // marcar la factura como activa otra vez
         await factura.update({ estado_fp: true }, { transaction: t });
 
         await t.commit();
