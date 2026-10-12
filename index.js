@@ -1,7 +1,7 @@
 // Importaciones
+import 'dotenv/config'; // lee los .env y los puede leer todos los archivos que importamos
 import express from "express";
 import multer from "multer"; // para reconocer los errores que el propio Multer genera (archivo muy pesado, campo inesperado, etc.)
-import dotenv from 'dotenv';
 import cors from 'cors';
 import path from "path"; // manejo de URL
 import { fileURLToPath } from "url"; // tranforma la URL generada por una comprensible para el navegador segun el sistema operativo
@@ -54,9 +54,6 @@ app.use((req, res, next) => {
     res.set('Cache-Control', 'no-store');
     next();
 });
-
-// para utilizar .env
-dotenv.config();
 
 // conexion de la DB
 db.authenticate()
